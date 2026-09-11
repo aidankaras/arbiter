@@ -61,13 +61,19 @@ jobs:
         run: uv python install 3.12
 
       - name: Audit dependencies for known vulnerabilities
-        # Audits the resolved dependency set rather than the environment. The
-        # project itself is not published to PyPI, so auditing the installed
-        # environment fails on an unresolvable local package.
+        # Audits the exported dependency set rather than the installed
+        # environment, because the project itself is not published to PyPI and
+        # cannot be resolved.
+        #
+        # Local version identifiers are stripped before auditing. Torch resolves
+        # to a `+cpu` wheel that exists only on the PyTorch index, and advisories
+        # are published against the upstream version regardless.
         run: |
           uv export --frozen --all-extras --no-emit-project --no-hashes \
-            --format requirements-txt -o requirements-audit.txt
-          uvx pip-audit --strict --requirement requirements-audit.txt
+            --format requirements-txt -o requirements-export.txt
+          sed -E 's/^([A-Za-z0-9._-]+==[0-9][^+ ]*)\+[A-Za-z0-9.]+/\1/' \
+            requirements-export.txt > requirements-audit.txt
+          uvx pip-audit --no-deps --requirement requirements-audit.txt
 
   secrets:
     name: secret scan

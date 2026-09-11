@@ -44,3 +44,4 @@ models/
 .idea/
 .vscode/
 requirements-audit.txt
+requirements-export.txt
