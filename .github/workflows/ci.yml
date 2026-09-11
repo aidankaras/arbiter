@@ -61,9 +61,13 @@ jobs:
         run: uv python install 3.12
 
       - name: Audit dependencies for known vulnerabilities
+        # Audits the resolved dependency set rather than the environment. The
+        # project itself is not published to PyPI, so auditing the installed
+        # environment fails on an unresolvable local package.
         run: |
-          uv sync --frozen --all-extras
-          uv run pip-audit --strict
+          uv export --frozen --all-extras --no-emit-project --no-hashes \
+            --format requirements-txt -o requirements-audit.txt
+          uvx pip-audit --strict --requirement requirements-audit.txt
 
   secrets:
     name: secret scan
@@ -84,6 +88,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # The default docker driver cannot export a build cache. buildx provides
+      # the docker-container driver that the GitHub Actions cache backend needs.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build image
         uses: docker/build-push-action@v6
