@@ -1,0 +1,140 @@
+[project]
+name = "arbiter"
+version = "0.1.0"
+description = "Event-driven equity forecasting from SEC filings, with four independent forecasting approaches evaluated against identical point-in-time evidence."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Aidan Karas" }]
+keywords = ["sec-filings", "event-study", "forecasting", "llm-agents", "evaluation"]
+
+dependencies = [
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.3.6",
+    "httpx>=0.28",
+    "tenacity>=9.0",
+    "structlog>=24.4",
+    "typer>=0.15",
+    "pandas>=2.2",
+    "numpy>=2.1",
+    "pyarrow>=18.0",
+]
+
+[project.optional-dependencies]
+api = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+]
+llm = [
+    "anthropic>=0.40",
+    "claude-agent-sdk>=0.1",
+    "openai>=1.57",
+    "langgraph>=0.2.50",
+]
+ml = [
+    "scikit-learn>=1.6",
+    "xgboost>=2.1",
+    "torch>=2.5",
+    "transformers>=4.47",
+    "peft>=0.14",
+    "sentence-transformers>=3.3",
+]
+broker = ["alpaca-py>=0.33"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "pytest-cov>=6.0",
+    "hypothesis>=6.122",
+    "ruff>=0.8",
+    "pyright>=1.1.390",
+    "pre-commit>=4.0",
+    "pip-audit>=2.7",
+]
+
+[project.scripts]
+arbiter = "arbiter.cli:app"
+
+[tool.uv]
+# CPU-only torch wheels. This project has no GPU budget: the neural arm trains on
+# free hosted GPU runtimes and is served on CPU. Pulling CUDA builds would add
+# roughly two gigabytes to every environment, including every CI run, for
+# hardware that is never present.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arbiter"]
+
+[tool.ruff]
+line-length = 96
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "N",         # pep8-naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "A",         # builtins shadowing
+    "C4",        # comprehensions
+    "DTZ",       # naive datetimes — timezone correctness matters here
+    "T20",       # no print statements
+    "SIM",       # simplify
+    "PTH",       # pathlib over os.path
+    "RUF",
+    "ANN",       # type annotations
+    "D",         # docstrings
+]
+ignore = [
+    "D105",      # magic method docstrings
+    "D107",      # __init__ docstring (documented on the class)
+    "ANN401",    # Any is occasionally correct at boundaries
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D", "ANN"]
+"scripts/**" = ["T20"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+markers = [
+    "integration: requires a live database or network",
+    "evaluation: runs against the frozen benchmark set",
+]
+
+[tool.coverage.run]
+source = ["src/arbiter"]
+branch = true
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:", "raise NotImplementedError"]

@@ -1,0 +1,45 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Data — raw filings and price caches are large and reproducible from source
+data/raw/
+data/cache/
+data/interim/
+*.sqlite
+*.db
+pgdata/
+
+# Model weights live on Hugging Face, not in git
+models/
+*.safetensors
+*.bin
+*.ckpt
+*.pt
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
