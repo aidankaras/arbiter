@@ -52,7 +52,6 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
     "pytest-cov>=6.0",
-    "hypothesis>=6.122",
     "ruff>=0.8",
     "pyright>=1.1.390",
     "pre-commit>=4.0",
@@ -116,6 +115,8 @@ ignore = [
 # Tests construct naive datetimes deliberately: a naive Eastern timestamp is the
 # input EDGAR produces, and converting it is what the code under test does.
 "tests/**" = ["D", "ANN", "DTZ"]
+# Migrations are generated from a template and re-exported by Alembic.
+"migrations/**" = ["D", "ANN", "INP001"]
 "scripts/**" = ["T20"]
 
 [tool.ruff.lint.isort]
@@ -135,11 +136,18 @@ reportMissingTypeStubs = false
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-addopts = "-ra --strict-markers --strict-config"
+# Integration tests reach the network and a database, so they are excluded from
+# the default run and selected explicitly with `-m integration`.
+addopts = "-ra --strict-markers --strict-config -m 'not integration'"
 testpaths = ["tests"]
 markers = [
-    "integration: requires a live database or network",
-    "evaluation: runs against the frozen benchmark set",
+    "integration: requires a live database or network; minutes, not seconds",
+]
+# The EDGAR client parses ownership XML with an HTML parser and warns once per
+# filing. A day's ingestion emits dozens; warnings that are always present are
+# warnings nobody reads when one finally matters.
+filterwarnings = [
+    "ignore::bs4.XMLParsedAsHTMLWarning",
 ]
 
 [tool.coverage.run]

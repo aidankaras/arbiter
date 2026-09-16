@@ -1,7 +1,9 @@
 # 01 — Point-in-time correctness
 
 **Subsystems:** `packets`, `retrieval`
-**Status:** design settled, implementation pending
+**Status:** design settled; the ingestion half is implemented, the packet and
+retrieval half is not. Sections below say which is which, and nothing here
+should be read as describing code that exists unless it says so.
 
 ## The concept
 
