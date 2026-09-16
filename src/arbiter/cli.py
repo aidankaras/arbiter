@@ -6,10 +6,15 @@ function that is independently testable without the CLI.
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+
 import typer
 
 from arbiter import __version__
 from arbiter.config import get_settings
+from arbiter.ingestion.pipeline import ingest_day
 
 app = typer.Typer(
     name="arbiter",
@@ -37,3 +42,19 @@ def check() -> None:
     typer.echo(f"broker:       {settings.alpaca_base_url}")
     typer.echo(f"daily ceiling: ${settings.daily_spend_ceiling_usd}")
     typer.echo("configuration valid")
+
+
+@app.command()
+def ingest(
+    day: str,
+    root: str = "data/events",
+    min_value_usd: str = "50000",
+) -> None:
+    """Ingest one day of filings into the event store.
+
+    The day is a calendar date in ISO form. Re-running a day replaces that day's
+    partitions, so a failed run is repeated rather than repaired.
+    """
+    counts = ingest_day(date.fromisoformat(day), Path(root), Decimal(min_value_usd))
+    for domain, count in counts.items():
+        typer.echo(f"{domain}: {count}")

@@ -1,0 +1,23 @@
+{
+ "accession_no": "0001628280-26-061534",
+ "company": "ALPHA & OMEGA SEMICONDUCTOR Ltd",
+ "cik": 1387467,
+ "aff10b5_one": false,
+ "rows": [
+  {
+   "Transaction Type": "Gift",
+   "Code": "G",
+   "Description": "Gift",
+   "Shares": 100947,
+   "Price": 0,
+   "Value": null,
+   "Date": "2026-08-24",
+   "Form": "Form 4",
+   "Issuer": "ALPHA & OMEGA SEMICONDUCTOR Ltd",
+   "Ticker": "AOSL",
+   "Insider": "Mike F Chang",
+   "Position": "Director, 10% Owner",
+   "Remaining Shares": 3698839
+  }
+ ]
+}
