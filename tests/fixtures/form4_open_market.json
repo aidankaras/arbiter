@@ -1,0 +1,23 @@
+{
+ "accession_no": "0000764180-26-000102",
+ "company": "ALTRIA GROUP, INC.",
+ "cik": 764180,
+ "aff10b5_one": false,
+ "rows": [
+  {
+   "Transaction Type": "Purchase",
+   "Code": "P",
+   "Description": "Open Market Purchase",
+   "Shares": 1500,
+   "Price": 67.62,
+   "Value": 101430.0,
+   "Date": "2026-09-09",
+   "Form": "Form 4",
+   "Issuer": "ALTRIA GROUP, INC.",
+   "Ticker": "MO",
+   "Insider": "Kathryn B. Mcquade",
+   "Position": "Director",
+   "Remaining Shares": 114929
+  }
+ ]
+}
