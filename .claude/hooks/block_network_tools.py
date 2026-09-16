@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Deny network-capable tools while a forecasting run is in progress.
+"""Restrict forecasting runs to their evidence packet.
 
 Forecasting arms read a frozen evidence packet and nothing else. Enforcing that
 here makes the boundary structural: an arm cannot reach past its packet even if
-its prompt is rewritten, truncated, or ignored. The boundary is what makes a
+its prompt is rewritten, truncated, or ignored. That boundary is what makes a
 comparison between arms meaningful, so it does not rest on instructions.
 
-The guard applies only when ARBITER_FORECAST_RUN is set, so ordinary
-development sessions keep their tools.
+The policy is deny-by-default. A denylist of retrieval tools was tried first and
+failed in practice: a run reached the network through an unrelated MCP server
+whose name the list did not anticipate. Only tools on the allowlist below may
+run, so a newly installed server cannot silently widen what an arm can see.
+
+The guard applies only when ARBITER_FORECAST_RUN is set, leaving ordinary
+development sessions unaffected.
 """
 
 from __future__ import annotations
@@ -17,7 +22,15 @@ import os
 import re
 import sys
 
-BLOCKED_TOOLS = frozenset({"WebFetch", "WebSearch"})
+# Local, non-retrieving tools an arm legitimately needs: reading its packet from
+# disk, searching within it, and writing its own prediction out.
+ALLOWED_TOOLS = frozenset(
+    {"Read", "Glob", "Grep", "Write", "Edit", "NotebookRead", "TodoWrite", "Bash"}
+)
+
+# The packet server serves frozen, point-in-time evidence and cannot fetch.
+ALLOWED_MCP_PREFIX = "mcp__arbiter_packet__"
+
 NETWORK_COMMANDS = ("curl", "wget", "nc", "ncat", "telnet", "ssh", "scp", "sftp")
 _COMMAND_PATTERN = re.compile(rf"\b({'|'.join(NETWORK_COMMANDS)})\b")
 
@@ -42,17 +55,21 @@ def deny(reason: str) -> None:
 
 
 def main() -> None:
-    """Inspect one PreToolUse payload and deny it if it can reach the network."""
+    """Inspect one PreToolUse payload and deny anything outside the allowlist."""
     if os.environ.get("ARBITER_FORECAST_RUN") != "1":
         sys.exit(0)
 
     payload = json.load(sys.stdin)
-    tool_name = payload.get("tool_name", "")
+    tool_name = str(payload.get("tool_name", ""))
 
-    if tool_name in BLOCKED_TOOLS:
+    if tool_name.startswith(ALLOWED_MCP_PREFIX):
+        sys.exit(0)
+
+    if tool_name not in ALLOWED_TOOLS:
         deny(
-            f"{tool_name} is unavailable during a forecasting run. Arms read only "
-            "the frozen evidence packet, so that every arm sees identical inputs."
+            f"{tool_name!r} is unavailable during a forecasting run, which may use "
+            "only its frozen evidence packet. Every arm must see identical inputs "
+            "for their comparison to mean anything."
         )
 
     if tool_name == "Bash":
