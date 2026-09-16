@@ -55,6 +55,24 @@ def test_untriggered_reports_yield_no_codes():
     assert triggered_items(["Item 2.02", "Item 7.01", "Item 9.01"]) == ()
 
 
+@pytest.mark.parametrize(
+    "label",
+    ["Item 5.02(b)", "Item 5.02(c)", "ITEM 5.02", "item 5.02", "Item  5.02", " Item 5.02(e)"],
+)
+def test_sub_lettered_and_differently_cased_labels_still_match(label: str):
+    """Item 4.02 is nearly always filed as 4.02(a); exact matching lost the population."""
+    assert triggered_items([label]) == ("5.02",)
+
+
+def test_a_restatement_filed_with_its_usual_letter_suffix_is_caught():
+    assert triggered_items(["Item 4.02(a)", "Item 9.01"]) == ("4.02",)
+
+
+def test_a_similar_looking_item_is_not_matched():
+    """5.02 must not swallow 5.021 or 15.02 if either ever appears."""
+    assert triggered_items(["Item 15.02"]) == ()
+
+
 def test_the_captured_fixture_carries_a_trigger_item():
     """An upstream change to item labels must fail here, not silently drop events."""
     payload = json.loads(FIXTURE.read_text())

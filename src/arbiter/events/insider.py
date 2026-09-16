@@ -87,32 +87,65 @@ def is_candidate(event: InsiderEvent, min_value_usd: Decimal) -> bool:
     return event.value_usd >= min_value_usd
 
 
-def _decimal(row: dict[str, Any], column: str) -> Decimal:
-    """Read one required numeric cell as `Decimal`, preserving reported digits.
+_BLANK = frozenset({"", "nan", "none", "null", "<na>", "nat"})
+
+
+def _is_blank(value: Any) -> bool:
+    """Report whether a cell holds no value at all."""
+    return str(value).strip().lower() in _BLANK
+
+
+def _decimal(row: dict[str, Any], column: str, accession_no: str) -> Decimal:
+    """Read one always-reported numeric cell as `Decimal`.
 
     Raises:
         KeyError: the column is absent, meaning the upstream format changed.
-        decimal.InvalidOperation: the cell holds no usable number where one is
-            always reported, which is a parsing defect rather than a data shape.
-    """
-    return Decimal(str(row[column]))
-
-
-def _optional_decimal(row: dict[str, Any], column: str) -> Decimal | None:
-    """Read one numeric cell that a filing may legitimately leave blank.
-
-    Returns `None` when the cell is empty or not a number, which is how filings
-    report transactions carrying no price, such as gifts. The absence is
-    preserved rather than replaced, because a zero price would be indexed as a
-    free acquisition and would distort any statistic computed over it.
+        ValueError: the cell is blank or unparseable where a number is always
+            reported, or holds a non-finite value. `Decimal("nan")` parses
+            without complaint, so finiteness is checked explicitly.
     """
     raw = str(row[column]).strip()
-    if raw == "" or raw.lower() in {"nan", "none", "null"}:
+    if _is_blank(raw):
+        msg = f"{column} is blank in {accession_no}, where a value is always reported"
+        raise ValueError(msg)
+    try:
+        value = Decimal(raw)
+    except InvalidOperation as exc:
+        msg = f"{column} in {accession_no} is not a number: {raw!r}"
+        raise ValueError(msg) from exc
+    if not value.is_finite():
+        msg = f"{column} in {accession_no} is not finite: {raw!r}"
+        raise ValueError(msg)
+    return value
+
+
+def _optional_decimal(row: dict[str, Any], column: str, accession_no: str) -> Decimal | None:
+    """Read one numeric cell that a filing may legitimately leave blank.
+
+    A blank cell yields `None`: that is how filings report a transaction with no
+    price, such as a gift, and the absence is preserved rather than replaced,
+    because a zero would be indexed as a free acquisition.
+
+    A cell that is present but unparseable raises instead. Treating it as blank
+    would quietly drop a real transaction from the studied population, and
+    formatting anomalies are not distributed evenly across filers, so the loss
+    would carry a bias no later test could detect.
+
+    Raises:
+        ValueError: the cell is present but not a finite number.
+    """
+    raw = str(row[column]).strip()
+    if _is_blank(raw):
         return None
     try:
-        return Decimal(raw)
-    except InvalidOperation:
-        return None
+        value = Decimal(raw)
+    except InvalidOperation as exc:
+        msg = f"{column} in {accession_no} is present but unparseable: {raw!r}"
+        raise ValueError(msg) from exc
+    if not value.is_finite():
+        msg = f"{column} in {accession_no} is not finite: {raw!r}"
+        raise ValueError(msg)
+    return value
 
 
 def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEvent]:
@@ -129,7 +162,12 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
 
     events: list[InsiderEvent] = []
     for row in frame.to_dict(orient="records"):
-        reports_a_transaction = any(column in row for column in _TRANSACTION_COLUMNS)
+        # Presence of a *value*, not of a column: every row in a frame carries
+        # the same keys, so a column-presence test can never filter the holdings
+        # rows it is meant to skip.
+        reports_a_transaction = any(
+            column in row and not _is_blank(row[column]) for column in _TRANSACTION_COLUMNS
+        )
         if not reports_a_transaction:
             # A Form 4 may report no transactions at all, carrying only the
             # filer's identity and a remark. Such a filing describes no event,
@@ -143,20 +181,29 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
             msg = f"Form 4 table is missing {missing}; the upstream format changed"
             raise KeyError(msg)
 
+        if _is_blank(row["Ticker"]):
+            # Without an identity the event can never be priced, and admitting it
+            # would later surface as an unresolvable event rather than as the
+            # parsing gap it is.
+            msg = f"Ticker is blank in {record.accession_no}; the event cannot be priced"
+            raise ValueError(msg)
+
         events.append(
             InsiderEvent(
                 accession_no=record.accession_no,
                 as_of=record.as_of,
                 cik=record.cik,
-                ticker=str(row["Ticker"]),
+                ticker=str(row["Ticker"]).strip(),
                 issuer=str(row["Issuer"]),
                 insider_name=str(row["Insider"]),
                 position=str(row["Position"]),
-                transaction_code=str(row["Code"]),
-                shares=_decimal(row, "Shares"),
-                price=_optional_decimal(row, "Price"),
-                value_usd=_optional_decimal(row, "Value"),
-                remaining_shares=_optional_decimal(row, "Remaining Shares"),
+                transaction_code=str(row["Code"]).strip(),
+                shares=_decimal(row, "Shares", record.accession_no),
+                price=_optional_decimal(row, "Price", record.accession_no),
+                value_usd=_optional_decimal(row, "Value", record.accession_no),
+                remaining_shares=_optional_decimal(
+                    row, "Remaining Shares", record.accession_no
+                ),
                 is_10b5_1=is_plan_trade,
             )
         )
