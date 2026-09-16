@@ -118,6 +118,12 @@ ignore = [
 "tests/**" = ["D", "ANN", "DTZ"]
 "scripts/**" = ["T20"]
 
+[tool.ruff.lint.isort]
+# Declared explicitly so that first-party imports group consistently whether or
+# not a module exists yet, which matters while tests are written before the code
+# they cover.
+known-first-party = ["arbiter"]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
