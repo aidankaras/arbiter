@@ -1,0 +1,53 @@
+{
+ "accession_no": "0001610717-26-000414",
+ "company": "10x Genomics, Inc.",
+ "cik": 1770787,
+ "aff10b5_one": true,
+ "rows": [
+  {
+   "Transaction Type": "Sale",
+   "Code": "S",
+   "Description": "Open Market Sale",
+   "Shares": 1206,
+   "Price": 63.6774,
+   "Value": 76794.9444,
+   "Date": "2026-09-09",
+   "Form": "Form 4",
+   "Issuer": "10x Genomics, Inc.",
+   "Ticker": "TXG",
+   "Insider": "Adam Taich",
+   "Position": "Chief Financial Officer",
+   "Remaining Shares": 316344
+  },
+  {
+   "Transaction Type": "Sale",
+   "Code": "S",
+   "Description": "Open Market Sale",
+   "Shares": 31428,
+   "Price": 64.3097,
+   "Value": 2021125.2516000003,
+   "Date": "2026-09-09",
+   "Form": "Form 4",
+   "Issuer": "10x Genomics, Inc.",
+   "Ticker": "TXG",
+   "Insider": "Adam Taich",
+   "Position": "Chief Financial Officer",
+   "Remaining Shares": 316344
+  },
+  {
+   "Transaction Type": "Sale",
+   "Code": "S",
+   "Description": "Open Market Sale",
+   "Shares": 13754,
+   "Price": 65.2574,
+   "Value": 897550.2796,
+   "Date": "2026-09-09",
+   "Form": "Form 4",
+   "Issuer": "10x Genomics, Inc.",
+   "Ticker": "TXG",
+   "Insider": "Adam Taich",
+   "Position": "Chief Financial Officer",
+   "Remaining Shares": 316344
+  }
+ ]
+}
