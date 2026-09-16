@@ -26,6 +26,7 @@ from typing import Any
 import httpx
 
 from arbiter.config import get_settings
+from arbiter.ingestion.timestamps import SEC_TIMEZONE
 
 BARS_ENDPOINT = "https://data.alpaca.markets/v2/stocks/bars"
 NEWS_ENDPOINT = "https://data.alpaca.markets/v1beta1/news"
@@ -88,6 +89,17 @@ def parse_bars(payload: dict[str, Any], symbol: str) -> list[Bar]:
     ]
 
 
+def current_session_date() -> date:
+    """Return today's date in the market's own timezone.
+
+    The feed's restriction is defined against the current US market session, so
+    a local civil date is the wrong input: on a UTC host after 20:00 Eastern it
+    is already tomorrow, which would let a window cover the live session and
+    defeat the rule this module exists to enforce.
+    """
+    return datetime.now(SEC_TIMEZONE).date()
+
+
 def newest_permitted_end(today: date, requested_end: date | None = None) -> date:
     """Return the latest window end the consolidated feed will serve.
 
@@ -142,22 +154,38 @@ def daily_bars(
     """
     newest_permitted_end(today, end)
 
-    response = httpx.get(
-        BARS_ENDPOINT,
-        params={
+    headers = _credentials()
+    collected: dict[str, list[Bar]] = {symbol: [] for symbol in symbols}
+    page_token: str | None = None
+
+    # The response is capped and continues under `next_page_token`. Reading only
+    # the first page would silently return a short series, or none at all for a
+    # symbol that fell past the cap, and `parse_bars` cannot distinguish that
+    # from a ticker that did not trade.
+    while True:
+        params: dict[str, str | int] = {
             "symbols": ",".join(symbols),
             "timeframe": "1Day",
             "start": start.isoformat(),
             "end": end.isoformat(),
             "feed": CONSOLIDATED_FEED,
             "adjustment": "all",
-        },
-        headers=_credentials(),
-        timeout=60,
-    )
-    response.raise_for_status()
-    payload: dict[str, Any] = response.json()
-    return {symbol: parse_bars(payload, symbol) for symbol in symbols}
+            "limit": 10000,
+        }
+        if page_token:
+            params["page_token"] = page_token
+
+        response = httpx.get(BARS_ENDPOINT, params=params, headers=headers, timeout=60)
+        response.raise_for_status()
+        payload: dict[str, Any] = response.json()
+
+        for symbol in symbols:
+            collected[symbol].extend(parse_bars(payload, symbol))
+
+        next_token = payload.get("next_page_token")
+        if not next_token:
+            return collected
+        page_token = str(next_token)
 
 
 def recent_news(

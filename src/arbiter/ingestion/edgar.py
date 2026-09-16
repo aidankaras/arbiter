@@ -19,6 +19,49 @@ from arbiter.config import get_settings
 from arbiter.ingestion.timestamps import acceptance_time_utc
 
 
+class EmptyTradingDayError(RuntimeError):
+    """Raised when EDGAR returns no index for a day the market was open.
+
+    An empty result is ambiguous: it means either that no filing of this form
+    was accepted, or that the index could not be read. Accepting the ambiguity
+    would let a transient failure be recorded as a complete, permanently empty
+    day, which no later check could distinguish from a genuinely quiet one.
+    """
+
+
+# Days the US equity market is closed, so EDGAR legitimately holds no filings.
+# Weekend closures are derived; these are the scheduled holidays through 2027.
+_MARKET_HOLIDAYS = frozenset(
+    {
+        date(2026, 1, 1),
+        date(2026, 1, 19),
+        date(2026, 2, 16),
+        date(2026, 4, 3),
+        date(2026, 5, 25),
+        date(2026, 6, 19),
+        date(2026, 7, 3),
+        date(2026, 9, 7),
+        date(2026, 11, 26),
+        date(2026, 12, 25),
+        date(2027, 1, 1),
+        date(2027, 1, 18),
+        date(2027, 2, 15),
+        date(2027, 3, 26),
+        date(2027, 5, 31),
+        date(2027, 6, 18),
+        date(2027, 7, 5),
+        date(2027, 9, 6),
+        date(2027, 11, 25),
+        date(2027, 12, 24),
+    }
+)
+
+
+def _is_trading_day(day: date) -> bool:
+    """Report whether the US equity market was open on a calendar day."""
+    return day.weekday() < 5 and day not in _MARKET_HOLIDAYS
+
+
 @dataclass(frozen=True)
 class FilingRecord:
     """One filing's identity and the instant it became publicly available."""
@@ -62,8 +105,17 @@ def filings_with_objects(form: str, on: date) -> list[tuple[FilingRecord, Any]]:
     configure_identity()
     filings = get_filings(form=form, filing_date=on.isoformat())
     if filings is None:
-        # EDGAR returns nothing for a day it holds no filings of this form, such
-        # as a weekend or a federal holiday. That is an empty day, not a failure.
+        # A day EDGAR holds no filings for and a day whose index could not be
+        # read are indistinguishable here, and treating both as empty would
+        # record a failed fetch as a complete, permanently empty day. Only a
+        # non-trading day is accepted as legitimately empty.
+        if _is_trading_day(on):
+            msg = (
+                f"EDGAR returned no {form} index for {on.isoformat()}, which is a "
+                "trading day; treat this as a failed fetch and retry rather than "
+                "recording the day as empty"
+            )
+            raise EmptyTradingDayError(msg)
         return []
     return [(to_record(filing), filing) for filing in filings]
 

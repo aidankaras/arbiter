@@ -13,6 +13,7 @@ models hold an advantage over models reading tables.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
@@ -38,15 +39,26 @@ class RedFlagEvent(BaseModel):
     has_press_release: bool
 
 
+#: Item labels vary in case, spacing, and sub-letter. Item 4.02 is nearly always
+#: filed as 4.02(a) or 4.02(b), and 5.02 as 5.02(b) through (e), so matching the
+#: numeric prefix rather than the whole label is what keeps those events in the
+#: population at all.
+_ITEM_LABEL = re.compile(r"\s*item\s*(\d+\.\d+)", re.IGNORECASE)
+
+
 def triggered_items(items: Iterable[str]) -> tuple[str, ...]:
     """Return the trigger item codes present, normalized and ordered.
 
-    Labels arrive as `"Item 5.02"`. Only the numeric code is retained, so that
-    grouping and comparison do not depend on how a label happens to be
-    formatted, and the order is fixed so that two reports carrying the same
-    items compare equal.
+    Labels arrive in several shapes — `"Item 5.02"`, `"ITEM 5.02"`,
+    `"Item 5.02(b)"` — and only the numeric code is retained, so that grouping
+    and comparison do not depend on formatting. The order is fixed so that two
+    reports carrying the same items compare equal.
     """
-    codes = {item.replace("Item ", "").strip() for item in items}
+    codes: set[str] = set()
+    for item in items:
+        match = _ITEM_LABEL.match(str(item))
+        if match:
+            codes.add(match.group(1))
     return tuple(sorted(codes & TRIGGER_ITEMS))
 
 

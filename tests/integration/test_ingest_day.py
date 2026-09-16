@@ -33,7 +33,7 @@ def test_ingesting_a_settled_day_produces_events_in_both_domains(
     counts, _ = ingested
     assert counts["insider"] > 0
     assert counts["redflag"] > 0
-    assert set(counts) == {"insider", "redflag"}
+    assert set(counts) == {"insider", "redflag", "rejected"}
 
 
 def test_stored_insider_events_respect_the_filter_rules(
@@ -71,6 +71,19 @@ def test_events_carry_the_acceptance_instant_not_midnight(
 
     assert all(row["as_of"].tzinfo is not None for row in rows)
     assert any(row["as_of"].hour != 0 for row in rows)
+
+
+def test_a_real_day_parses_without_systemic_rejections(
+    ingested: tuple[dict[str, int], Path],
+):
+    """A rejection rate above a few percent means a format break, not odd filers."""
+    counts, root = ingested
+
+    attempted = counts["insider"] + counts["redflag"] + counts["rejected"]
+    assert counts["rejected"] / attempted < 0.05
+
+    quarantine = root / "rejected" / "insider" / f"{SETTLED_DAY.isoformat()}.json"
+    assert quarantine.exists(), "every run records its rejections, including none"
 
 
 def test_rerunning_the_day_is_idempotent(ingested: tuple[dict[str, int], Path], tmp_path: Path):
