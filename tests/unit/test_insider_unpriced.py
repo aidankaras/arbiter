@@ -64,3 +64,22 @@ def test_share_counts_are_still_required_and_parsed():
 def test_unpriced_transactions_are_never_candidates():
     """Excluded twice over: a gift is not an open-market trade and has no value."""
     assert not any(is_candidate(event, MIN_VALUE) for event in _events())
+
+
+def test_a_blank_post_transaction_holding_is_recorded_as_absent():
+    """Derivative rows often omit the remaining holding; zero would assert a sale."""
+    payload = json.loads(FIXTURE.read_text())
+    payload["rows"] = [{**payload["rows"][0], "Remaining Shares": "None"}]
+
+    events = extract_insider_events(_record(), _Form4(payload))
+
+    assert events[0].remaining_shares is None
+
+
+def test_a_reported_remaining_holding_is_preserved():
+    payload = json.loads(FIXTURE.read_text())
+    payload["rows"] = [{**payload["rows"][0], "Remaining Shares": "4200"}]
+
+    events = extract_insider_events(_record(), _Form4(payload))
+
+    assert events[0].remaining_shares == Decimal("4200")
