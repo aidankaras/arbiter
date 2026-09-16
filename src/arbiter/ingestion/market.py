@@ -17,16 +17,25 @@ is what the API returns.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+
+import httpx
+
+from arbiter.config import get_settings
 
 BARS_ENDPOINT = "https://data.alpaca.markets/v2/stocks/bars"
 NEWS_ENDPOINT = "https://data.alpaca.markets/v1beta1/news"
 
 #: The consolidated feed. Never substituted, including when it refuses a window.
 CONSOLIDATED_FEED = "sip"
+
+
+class MissingCredentialsError(RuntimeError):
+    """Raised when market data is requested without configured credentials."""
 
 
 class RecentSipWindowError(ValueError):
@@ -98,6 +107,86 @@ def newest_permitted_end(today: date, requested_end: date | None = None) -> date
         )
         raise RecentSipWindowError(msg)
     return requested_end
+
+
+def _credentials() -> dict[str, str]:
+    """Return the request headers carrying the market data credentials.
+
+    Raises:
+        MissingCredentialsError: the environment supplies no market data keys,
+            so a caller would otherwise receive an opaque authentication
+            failure from the remote service.
+    """
+    settings = get_settings()
+    if settings.alpaca_api_key is None or settings.alpaca_secret_key is None:
+        msg = "ALPACA_API_KEY and ALPACA_SECRET_KEY are required for market data"
+        raise MissingCredentialsError(msg)
+    return {
+        "APCA-API-KEY-ID": settings.alpaca_api_key.get_secret_value(),
+        "APCA-API-SECRET-KEY": settings.alpaca_secret_key.get_secret_value(),
+    }
+
+
+def daily_bars(
+    symbols: Sequence[str], start: date, end: date, today: date
+) -> dict[str, list[Bar]]:
+    """Fetch daily bars for each symbol across a closed window.
+
+    The window is validated against the feed rule before any request is made, so
+    an attempt to price the current session fails here with a legible reason.
+
+    Raises:
+        RecentSipWindowError: the window would cover the current session.
+        MissingCredentialsError: no market data credentials are configured.
+        httpx.HTTPStatusError: the service rejected the request.
+    """
+    newest_permitted_end(today, end)
+
+    response = httpx.get(
+        BARS_ENDPOINT,
+        params={
+            "symbols": ",".join(symbols),
+            "timeframe": "1Day",
+            "start": start.isoformat(),
+            "end": end.isoformat(),
+            "feed": CONSOLIDATED_FEED,
+            "adjustment": "all",
+        },
+        headers=_credentials(),
+        timeout=60,
+    )
+    response.raise_for_status()
+    payload: dict[str, Any] = response.json()
+    return {symbol: parse_bars(payload, symbol) for symbol in symbols}
+
+
+def recent_news(
+    symbol: str, start: datetime, as_of: datetime, limit: int = 50
+) -> list[dict[str, Any]]:
+    """Fetch news for one symbol and return only what predates `as_of` unrevised.
+
+    Filtering happens here rather than at the call site, so no caller can hold a
+    list of articles that includes evidence postdating the event.
+
+    Raises:
+        MissingCredentialsError: no market data credentials are configured.
+        httpx.HTTPStatusError: the service rejected the request.
+    """
+    response = httpx.get(
+        NEWS_ENDPOINT,
+        params={
+            "symbols": symbol,
+            "start": start.isoformat().replace("+00:00", "Z"),
+            "end": as_of.isoformat().replace("+00:00", "Z"),
+            "limit": limit,
+        },
+        headers=_credentials(),
+        timeout=60,
+    )
+    response.raise_for_status()
+    payload: dict[str, Any] = response.json()
+    articles: list[dict[str, Any]] = payload.get("news") or []
+    return usable_news(articles, as_of=as_of)
 
 
 def _instant(raw: str) -> datetime:
