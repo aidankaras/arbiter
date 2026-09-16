@@ -61,6 +61,10 @@ def filings_with_objects(form: str, on: date) -> list[tuple[FilingRecord, Any]]:
     """
     configure_identity()
     filings = get_filings(form=form, filing_date=on.isoformat())
+    if filings is None:
+        # EDGAR returns nothing for a day it holds no filings of this form, such
+        # as a weekend or a federal holiday. That is an empty day, not a failure.
+        return []
     return [(to_record(filing), filing) for filing in filings]
 
 

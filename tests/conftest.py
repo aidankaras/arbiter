@@ -20,6 +20,17 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _sec_identity() -> None:
+    """Supply the contact string EDGAR requires, for every test in the suite.
+
+    Configuration is validated at startup and fails fast when this is absent, so
+    a test touching the ingestion layer would otherwise fail on configuration
+    rather than on the behaviour it covers.
+    """
+    os.environ.setdefault("SEC_USER_AGENT", "arbiter-tests tests@example.com")
+
+
 @pytest.fixture(scope="session")
 def database_url() -> Iterator[str]:
     """Start an ephemeral PostgreSQL server and yield its SQLAlchemy URL.
