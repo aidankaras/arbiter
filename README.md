@@ -1,22 +1,56 @@
 # Arbiter
 
+[![CI](https://github.com/aidankaras/arbiter/actions/workflows/ci.yml/badge.svg)](https://github.com/aidankaras/arbiter/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](pyproject.toml)
+
 Event-driven equity forecasting from SEC filings, built to answer a question that
 most applied-LLM systems leave unmeasured: **does an LLM agent actually beat a
 conventional model when both are given exactly the same information?**
 
-Arbiter ingests SEC filings daily, freezes each event into an immutable
-point-in-time evidence packet, and runs four independent forecasting approaches
-against that identical packet. All four are tracked as live paper portfolios with
-full decision provenance and per-decision cost accounting.
+Arbiter ingests SEC filings daily and freezes each event into an immutable
+point-in-time evidence packet. Four independent forecasting approaches will then
+score that identical packet, each tracked as a shadow paper portfolio with full
+decision provenance and per-decision cost accounting.
 
-> **Status:** early development. This README describes the target design; see
-> [Roadmap](#roadmap) for what is actually built. Paper trading only, always.
+> **Status: the ingestion half is built; no forecasting arm exists yet.**
+>
+> Working today: EDGAR ingestion for Form 4 and 8-K, event extraction for the
+> insider and red-flag domains, a date-partitioned event store, market data,
+> abnormal-return labels, an append-only ledger, and spend metering.
+>
+> Designed but not built: the evidence packet builder, all four arms, the
+> dashboard, and the paper portfolios. Sections describing those use the future
+> tense; anything in the present tense refers to code in this repository.
+> Paper trading only, always.
+
+## Quickstart
+
+```bash
+git clone https://github.com/aidankaras/arbiter && cd arbiter
+uv sync --all-extras
+cp .env.example .env          # set SEC_USER_AGENT: "identifier your@email"
+uv run arbiter ingest 2026-09-11
+```
+
+```
+insider: 47
+redflag: 10
+```
+
+That command fetches every Form 4 and 8-K accepted on the given day, extracts the
+qualifying events, and writes them to `data/events/{domain}/{date}.parquet`.
+Re-running a date replaces that date's partition, so a failed run is repeated
+rather than repaired.
+
+Market data additionally requires `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`;
+EDGAR ingestion needs no credentials beyond the contact string the SEC requires.
 
 ---
 
-## The four arms
+## The four arms (designed, not yet built)
 
-Every event is scored by four approaches that see byte-identical inputs:
+Each event will be scored by four approaches that see byte-identical inputs:
 
 | Arm | Approach | Sees text | Uses an LLM |
 |---|---|---|---|
@@ -114,8 +148,9 @@ without passing through explicit risk limits.
 
 ## Stack
 
-Python 3.12 with `uv`. PostgreSQL with `pgvector` as the single store for both
-relational and similarity queries. LangGraph for orchestration. FastAPI for the
+Python 3.12 with `uv`. Ingested events are stored as date-partitioned Parquet;
+PostgreSQL holds the append-only prediction and usage ledger, and will hold
+`pgvector` embeddings for comparable retrieval once that exists. LangGraph for orchestration. FastAPI for the
 API and dashboard. PyTorch with `transformers` and `peft` for the neural arm.
 Docker Compose for local and deployed environments. GitHub Actions for scheduled
 ingestion, evaluation, and reporting.
@@ -127,6 +162,8 @@ ingestion, evaluation, and reporting.
 | [`docs/architecture.md`](docs/architecture.md) | Component boundaries and data flow |
 | [`docs/methodology.md`](docs/methodology.md) | Leakage controls, labeling, evaluation design |
 | [`docs/code-standards.md`](docs/code-standards.md) | Engineering standards for this repository |
+| [`docs/data-provenance.md`](docs/data-provenance.md) | Sources, licensing terms, and what is redistributed |
+| [`docs/operations.md`](docs/operations.md) | Telemetry, spend ceilings, and running migrations |
 | [`docs/strategies/`](docs/strategies/) | Per-strategy event definitions and features |
 | [`docs/lessons/`](docs/lessons/) | Concept notes covering the design decisions behind each subsystem |
 | [`reports/`](reports/) | Weekly research log, generated automatically |
@@ -134,8 +171,10 @@ ingestion, evaluation, and reporting.
 ## Roadmap
 
 - [x] Repository scaffold, CI, and engineering standards
-- [ ] Ledger, usage metering, and enforced spend ceilings
-- [ ] EDGAR ingestion, filing parsers, XBRL facts, price data
+- [x] Append-only ledger, usage metering, and spend ceilings
+- [x] EDGAR ingestion: Form 4 and 8-K parsing, event extraction, Parquet store
+- [x] Market data and abnormal-return labels
+- [ ] XBRL facts and the earnings strategy
 - [ ] Evidence packet builder with timestamp enforcement and hashing
 - [ ] Baseline arm and evaluation harness
 - [ ] Neural arm

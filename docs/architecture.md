@@ -42,19 +42,28 @@ For the properties these components exist to preserve, see
 
 ## Modules
 
+Modules that exist today:
+
 | Module | Responsibility | Depends on |
 |---|---|---|
-| `ingestion` | EDGAR client, filing parsers, XBRL facts, price data | `db` |
-| `events` | Trigger evaluation, event normalization | `ingestion`, `db` |
-| `packets` | Packet construction, schema, hashing, timestamp enforcement | `events`, `retrieval` |
-| `retrieval` | Vector and relational comparable lookup, as-of filtering | `db` |
-| `arms/*` | The four forecasting approaches | `packets` |
-| `portfolio` | Sizing, risk limits, shadow books, broker adapter | `db` |
-| `evaluation` | Metrics, calibration, benchmark, regression gate | `db` |
-| `llm` | Provider routing, cost metering, caching, budget enforcement | — |
-| `reporting` | Weekly report generation | `evaluation`, `llm` |
-| `api` | FastAPI application and dashboard | `evaluation`, `portfolio` |
+| `ingestion` | EDGAR client, filing parsers, market data, event store | `events` |
+| `events` | Trigger evaluation, event normalization | `ingestion` |
+| `evaluation` | Abnormal return labels | — |
+| `llm` | Usage metering and spend ceilings | `db` |
 | `db` | Models, session management, migrations | — |
+
+Modules the design calls for, not yet written. They are described here so the
+boundaries are settled before code arrives; none of them exists in the tree, and
+the packages are created when their first module is:
+
+| Planned module | Responsibility |
+|---|---|
+| `packets` | Packet construction, schema, hashing, timestamp enforcement |
+| `retrieval` | Vector and relational comparable lookup, as-of filtering |
+| `arms/*` | The four forecasting approaches |
+| `portfolio` | Sizing, risk limits, shadow books, broker adapter |
+| `reporting` | Weekly report generation |
+| `api` | Dashboard data publication |
 
 Dependencies run one direction. `packets` does not import from `arms`, and no arm
 imports from another. An arm that needed to know what another arm predicted would
@@ -64,8 +73,13 @@ importing them.
 
 ## Storage
 
-A single PostgreSQL instance with the `pgvector` extension serves both relational
-and similarity queries.
+**Today:** ingested events are written as date-partitioned Parquet, one file per
+domain per day, and PostgreSQL holds the append-only prediction and usage
+ledger. Parquet suits the event store because it is written once per day, read
+in full by whatever consumes it, and never updated in place.
+
+**Planned, once comparable retrieval exists:** a single PostgreSQL instance with
+the `pgvector` extension serving both relational and similarity queries.
 
 The queries this system actually runs are hybrid: similar text, *and* the same
 event type, *and* within a market-cap band, *and* resolved before a given
@@ -123,7 +137,10 @@ serving it requires no always-on host.
 ## Cost and safety controls
 
 - Every model call records model, input tokens, cached tokens, output tokens, and
-  computed cost, attributed to a packet and a prediction.
+  computed cost, attributed to the run and agent that made it. Attribution to a
+  packet and a prediction is the goal and is not yet possible: the ledger table
+  carries no packet hash or prediction reference, so cost per decision cannot be
+  computed until those columns and the predictions that populate them exist.
 - A per-run token ceiling terminates a run that exceeds it. A prompt requesting
   efficiency is advisory; a ceiling is enforced.
 - A daily spend ceiling halts the pipeline.

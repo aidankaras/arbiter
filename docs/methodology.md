@@ -79,8 +79,9 @@ the event's own timestamp.** The filter lives in the query.
 This is the most easily violated property in the system and the most damaging
 when violated. Retrieving a case whose outcome had not yet occurred inserts
 future information into a past decision, and the resulting performance is
-fictitious in a way that no downstream test detects. Every retrieval path carries
-a test asserting the constraint holds.
+fictitious in a way that no downstream test detects. Every retrieval path will
+carry a test asserting the constraint holds; no retrieval code exists yet, and
+this note records the requirement it must satisfy when it does.
 
 ## Labeling
 

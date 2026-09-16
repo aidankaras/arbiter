@@ -55,15 +55,19 @@ readily as it documents correct behavior.
 
 - **Unit tests** cover pure logic with hand-computed expected values. Where a
   calculation has a closed form or a published reference, the test uses it.
-- **Property-based tests** (`hypothesis`) cover the risk and sizing math, where
-  the properties are clearer than any individual case: position size never
+- **Property-based tests** will cover the risk and sizing math once it exists,
+  where the properties are clearer than any individual case: position size never
   exceeds the concentration cap, sizing is monotonic in conviction, a zero-
-  conviction signal produces no position.
+  conviction signal produces no position. No sizing code exists yet, so neither
+  do those tests.
 - **Timestamp-discipline tests** are their own category. Every retrieval path has
   a test asserting that data after the event's `as_of` is excluded. These guard
   the property the project's validity rests on.
-- **Integration tests** are marked and excluded from the default run.
-- **Evaluation tests** run the frozen benchmark and fail CI on regression.
+- **Integration tests** are marked and excluded from the default run. They reach
+  live SEC and market-data endpoints and an embedded database; a full day of
+  ingestion takes minutes, which is why they are not run per pull request.
+- **Evaluation tests** will run a frozen benchmark and fail CI on regression.
+  Neither the benchmark nor that job exists yet.
 
 Coverage is tracked but is not the target. Correct assertions over a critical
 path beat broad coverage of trivial paths.
@@ -128,8 +132,9 @@ Commit messages use the imperative mood and explain why a change was made when
 that is not obvious from the diff. Each commit leaves the repository in a working
 state with CI green.
 
-Changes fall into two categories, and the distinction is enforced by branch
-protection:
+Changes fall into two categories. Branch protection currently requires the four
+CI checks to pass; the review requirement below is a working rule, not yet an
+enforced one:
 
 - **Mechanically verifiable** — dependency bumps, formatting, regenerated
   documentation, data refreshes. Automated review and passing CI are sufficient.

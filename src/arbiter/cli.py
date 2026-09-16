@@ -11,9 +11,10 @@ from decimal import Decimal
 from pathlib import Path
 
 import typer
+from pydantic import ValidationError
 
 from arbiter import __version__
-from arbiter.config import get_settings
+from arbiter.config import Settings, get_settings
 from arbiter.ingestion.pipeline import ingest_day
 
 app = typer.Typer(
@@ -22,6 +23,23 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+
+def _settings_or_exit() -> Settings:
+    """Return validated settings, or exit with the variable that needs setting.
+
+    A stack trace is the wrong first impression for a missing environment
+    variable, and it buries the one line that says which variable it was.
+    """
+    try:
+        return get_settings()
+    except ValidationError as exc:
+        typer.echo("Configuration is incomplete:", err=True)
+        for error in exc.errors():
+            variable = str(error["loc"][0]).upper()
+            typer.echo(f"  {variable}: {error['msg']}", err=True)
+        typer.echo("\nCopy .env.example to .env and fill in the values above.", err=True)
+        raise typer.Exit(code=1) from None
 
 
 @app.command()
@@ -37,7 +55,7 @@ def check() -> None:
     Run this after editing the environment. It exits non-zero on invalid
     configuration so it can gate a scheduled run.
     """
-    settings = get_settings()
+    settings = _settings_or_exit()
     typer.echo(f"environment:  {settings.environment}")
     typer.echo(f"broker:       {settings.alpaca_base_url}")
     typer.echo(f"daily ceiling: ${settings.daily_spend_ceiling_usd}")
