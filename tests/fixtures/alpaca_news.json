@@ -1,0 +1,132 @@
+{
+ "news": [
+  {
+   "author": "Benzinga Newsdesk",
+   "content": "",
+   "created_at": "2026-08-27T19:02:09Z",
+   "headline": "Altria Group Raises Quarterly Dividend From $1.06 To $1.11/Share, Payable October 9 To Holders Of Record September 15",
+   "id": 61477742,
+   "images": [],
+   "source": "benzinga",
+   "summary": "",
+   "symbols": [
+    "MO"
+   ],
+   "updated_at": "2026-08-27T19:02:09Z",
+   "url": "https://www.benzinga.com/quote/MO"
+  },
+  {
+   "author": "Akanksha Bakshi",
+   "content": "",
+   "created_at": "2026-08-24T15:48:19Z",
+   "headline": "Altria, Philip Morris Sign Manufacturing Pact",
+   "id": 61387385,
+   "images": [
+    {
+     "size": "large",
+     "url": "https://cdn.benzinga.com/files/images/story/2026/08/24/Richmond--Vausa-may-2-2018altria-Sign.jpg?width=2048&height=1536"
+    },
+    {
+     "size": "small",
+     "url": "https://cdn.benzinga.com/files/images/story/2026/08/24/Richmond--Vausa-may-2-2018altria-Sign.jpg?width=1024&height=768"
+    },
+    {
+     "size": "thumb",
+     "url": "https://cdn.benzinga.com/files/images/story/2026/08/24/Richmond--Vausa-may-2-2018altria-Sign.jpg?width=250&height=187"
+    }
+   ],
+   "source": "benzinga",
+   "summary": "Altria and Philip Morris International enter a contract manufacturing deal to strengthen operating capabilities.",
+   "symbols": [
+    "DHS",
+    "GQGU",
+    "MO",
+    "PM",
+    "SIXH"
+   ],
+   "updated_at": "2026-08-24T15:48:19Z",
+   "url": "https://www.benzinga.com/markets/large-cap/26/08/61387385/altria-philip-morris-sign-manufacturing-pact"
+  },
+  {
+   "author": "Benzinga Newsdesk",
+   "content": "",
+   "created_at": "2026-08-24T11:10:14Z",
+   "headline": "Philip Morris International Announces Contract Manufacturing Arrangement For Combustible Cigarettes With Altria's Philip Morris USA; First Shipments Expected Early 2027",
+   "id": 61377747,
+   "images": [],
+   "source": "benzinga",
+   "summary": "",
+   "symbols": [
+    "MO",
+    "PM"
+   ],
+   "updated_at": "2026-08-24T11:10:14Z",
+   "url": "https://www.benzinga.com/quote/MO"
+  },
+  {
+   "author": "Dan Schmidt",
+   "content": "",
+   "created_at": "2026-08-11T18:16:03Z",
+   "headline": "5 Earnings Losers With More Downside Ahead",
+   "id": 61122066,
+   "images": [
+    {
+     "size": "large",
+     "url": "https://cdn.benzinga.com/files/images/story/2026/08/11/Earnings-Season.jpg?width=2048&height=1536"
+    },
+    {
+     "size": "small",
+     "url": "https://cdn.benzinga.com/files/images/story/2026/08/11/Earnings-Season.jpg?width=1024&height=768"
+    },
+    {
+     "size": "thumb",
+     "url": "https://cdn.benzinga.com/files/images/story/2026/08/11/Earnings-Season.jpg?width=250&height=187"
+    }
+   ],
+   "source": "benzinga",
+   "summary": "It\u2019s been a generally successful earnings season for most of the market, as EPS figures remain strong and analysts continue to raise estimates. But not everyone is joining the party.\n\n\n\nEarnings reports from the",
+   "symbols": [
+    "APP",
+    "MO",
+    "PZZA",
+    "RDDT",
+    "TMUS"
+   ],
+   "updated_at": "2026-08-11T18:21:18Z",
+   "url": "https://www.benzinga.com/opinion/26/08/61122066/5-earnings-losers-with-more-downside-ahead"
+  },
+  {
+   "author": "Benzinga Newsdesk",
+   "content": "",
+   "created_at": "2026-08-11T13:33:53Z",
+   "headline": "Barclays Maintains Underweight on Altria Group, Lowers Price Target to $58",
+   "id": 61109477,
+   "images": [],
+   "source": "benzinga",
+   "summary": "",
+   "symbols": [
+    "MO"
+   ],
+   "updated_at": "2026-08-11T13:33:53Z",
+   "url": "https://www.benzinga.com/news/26/08/61109477/barclays-maintains-underweight-altria-group-lowers-price-target-58"
+  },
+  {
+   "author": "Benzinga Newsdesk",
+   "content": "",
+   "created_at": "2026-08-04T19:08:04Z",
+   "headline": "FDA Authorizes 4 New Nicotine Pouches",
+   "id": 60925537,
+   "images": [],
+   "source": "benzinga",
+   "summary": "",
+   "symbols": [
+    "BTI",
+    "MO",
+    "PM"
+   ],
+   "updated_at": "2026-08-04T19:08:04Z",
+   "url": "https://www.benzinga.com/news/26/08/60925537/fda-authorizes-4-new-nicotine-pouches"
+  }
+ ],
+ "next_page_token": null
+}
