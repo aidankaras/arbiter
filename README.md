@@ -133,7 +133,8 @@ ingestion, evaluation, and reporting.
 
 ## Roadmap
 
-- [x] Repository scaffold, CI, standards, spend controls
+- [x] Repository scaffold, CI, and engineering standards
+- [ ] Ledger, usage metering, and enforced spend ceilings
 - [ ] EDGAR ingestion, filing parsers, XBRL facts, price data
 - [ ] Evidence packet builder with timestamp enforcement and hashing
 - [ ] Baseline arm and evaluation harness
