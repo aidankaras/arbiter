@@ -22,6 +22,7 @@ dependencies = [
     "pandas>=2.2",
     "numpy>=2.1",
     "pyarrow>=18.0",
+    "edgartools>=5.58.0",
 ]
 
 [project.optional-dependencies]
@@ -112,7 +113,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D", "ANN"]
+# Tests construct naive datetimes deliberately: a naive Eastern timestamp is the
+# input EDGAR produces, and converting it is what the code under test does.
+"tests/**" = ["D", "ANN", "DTZ"]
 "scripts/**" = ["T20"]
 
 [tool.ruff.lint.pydocstyle]
