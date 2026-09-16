@@ -12,6 +12,7 @@ from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
 from typing import Annotated
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +21,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # request. Requests without one are throttled or refused outright, so this is
 # validated at startup rather than discovered on the first fetch.
 _SEC_USER_AGENT_PATTERN = re.compile(r"^\S+\s+\S+@\S+\.\S+$")
+
+#: Broker hosts that carry no real capital. Compared exactly, never by substring.
+_PAPER_TRADING_HOSTS = frozenset({"paper-api.alpaca.markets"})
 
 
 class Environment(StrEnum):
@@ -99,10 +103,15 @@ class Settings(BaseSettings):
         Raises:
             ValueError: the URL does not point at a paper-trading endpoint.
         """
-        if "paper-api" not in value:
+        # The host is compared exactly rather than searched for a substring:
+        # `https://paper-api.evil.com` contains the expected text while pointing
+        # somewhere else entirely.
+        host = urlparse(value).hostname
+        if host not in _PAPER_TRADING_HOSTS:
             msg = (
-                f"Refusing non-paper broker endpoint {value!r}. This system is "
-                "designed and tested for paper trading only."
+                f"Refusing broker endpoint {value!r}: host {host!r} is not a "
+                "paper-trading endpoint. This system is designed and tested for "
+                "paper trading only."
             )
             raise ValueError(msg)
         return value
