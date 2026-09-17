@@ -12,9 +12,14 @@ would silently change meaning when that judgment changed.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
+from typing import Any, cast
+
+from pydantic import BaseModel, ConfigDict
 
 from arbiter.evaluation.labels import abnormal_return
 from arbiter.ingestion.market import Bar
@@ -23,6 +28,82 @@ from arbiter.ingestion.market import Bar
 #: drift after an auditor change or restatement runs for about a month, so a
 #: five-day window would measure the announcement rather than its consequence.
 HORIZONS = {"insider": 5, "redflag": 20}
+
+
+#: Calendar days per trading session, used only to decide whether a window has
+#: plausibly closed. Sessions come from the bars themselves; this is a coarse
+#: filter that avoids fetching prices for events that obviously cannot be
+#: measured yet, and it errs toward waiting.
+_CALENDAR_DAYS_PER_SESSION = 1.5
+
+#: Sessions of price history fetched before the first event, so the entry
+#: session that follows a filing is always inside the window.
+_LEAD_DAYS = 5
+
+
+@dataclass(frozen=True)
+class ResolutionRequest:
+    """One stored event, and what measuring it requires."""
+
+    accession_no: str
+    as_of: datetime
+    ticker: str
+    cik: int
+    horizon: int
+
+
+def entry_sessions(bars: list[Bar], as_of: datetime) -> list[Bar]:
+    """Return the sessions an event could have traded, entry first.
+
+    A session is tradeable only if it began after the filing became public. The
+    bars therefore act as the trading calendar: whichever sessions the exchange
+    actually held are the ones that count, so holidays and early closes need no
+    separate table.
+    """
+    return [bar for bar in bars if bar.timestamp > as_of]
+
+
+def window_closes_on(event: ResolutionRequest) -> date:
+    """Estimate the calendar day by which an event's horizon has passed.
+
+    Deliberately approximate and deliberately late: sessions are not calendar
+    days, and an event judged resolvable too early would simply fail on short
+    price history, wasting a request. Judging it late costs only a day.
+    """
+    span = int(event.horizon * _CALENDAR_DAYS_PER_SESSION) + 1
+    return event.as_of.date() + timedelta(days=span)
+
+
+def resolvable_on(event: ResolutionRequest, today: date) -> bool:
+    """Report whether an event can be measured as of `today`.
+
+    Two conditions, and the second is easy to overlook: the horizon must have
+    closed, and the window must end before the current session, because the
+    consolidated feed refuses a window covering today and this project does not
+    substitute a thinner feed for recent prices.
+    """
+    return window_closes_on(event) < today
+
+
+def plan_price_windows(
+    events: Sequence[ResolutionRequest],
+) -> dict[str, tuple[date, date]]:
+    """Group events into one price window per symbol.
+
+    A day's filings concentrate in far fewer issuers than events, and each
+    window covers every event for its symbol, so the number of price requests
+    follows the number of distinct symbols rather than the number of events.
+    """
+    windows: dict[str, tuple[date, date]] = {}
+    for event in events:
+        start = event.as_of.date() - timedelta(days=_LEAD_DAYS)
+        end = window_closes_on(event)
+        current = windows.get(event.ticker)
+        if current is None:
+            windows[event.ticker] = (start, end)
+        else:
+            windows[event.ticker] = (min(current[0], start), max(current[1], end))
+    return windows
 
 
 class UnresolvableEventError(ValueError):
@@ -34,15 +115,155 @@ class UnresolvableEventError(ValueError):
     """
 
 
-@dataclass(frozen=True)
-class Label:
-    """One event's realised outcome, with the evidence of how it was measured."""
+class Label(BaseModel):
+    """One event's realised outcome, with the evidence of how it was measured.
 
+    The accession number travels with the label because labels are produced days
+    or weeks after the events they measure, in a separate pass, and a measurement
+    that cannot be joined back to its event is not evidence of anything.
+
+    A model rather than a plain record because labels are stored, and the store
+    derives its column types from the model's fields. Inferring them from a
+    day's values instead would let two days disagree on decimal scale, which
+    matters here more than anywhere: every label carries a return.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    accession_no: str
     abnormal_return: Decimal
     benchmark_symbol: str
     horizon_days: int
     entry_session: date
     exit_session: date
+
+
+def requests_from_rows(
+    rows: Sequence[Mapping[str, Any]], domain: str
+) -> list[ResolutionRequest]:
+    """Convert stored event rows into resolution requests.
+
+    The horizon comes from the domain rather than the row, because it is a
+    property of the phenomenon being measured rather than of any single event.
+    An unknown domain raises: defaulting one would measure every event of that
+    kind over the wrong window, consistently and invisibly.
+
+    Raises:
+        KeyError: the domain has no horizon, or a row lacks a field the
+            measurement needs. A row that cannot be priced is a gap in the
+            pipeline, not an event that happens to resolve to nothing.
+    """
+    if domain not in HORIZONS:
+        msg = f"no horizon is defined for domain {domain!r}"
+        raise KeyError(msg)
+    horizon = HORIZONS[domain]
+
+    requests: list[ResolutionRequest] = []
+    for row in rows:
+        for field in ("accession_no", "as_of", "ticker", "cik"):
+            if field not in row:
+                msg = f"stored event is missing {field!r}; it cannot be measured"
+                raise KeyError(msg)
+        requests.append(
+            ResolutionRequest(
+                accession_no=str(row["accession_no"]),
+                as_of=cast("datetime", row["as_of"]),
+                ticker=str(row["ticker"]),
+                cik=int(cast("int", row["cik"])),
+                horizon=horizon,
+            )
+        )
+    return requests
+
+
+def resolve_stored_day(
+    day: date,
+    domain: str,
+    root: Path,
+    fetch_bars: Callable[[str, date, date], list[Bar]],
+    benchmark_for: Callable[[int], str],
+    today: date,
+) -> int:
+    """Measure one stored day of a domain and write its labels.
+
+    Returns the number of labels written. A partition is written even when that
+    number is zero, so a day that was processed and yielded nothing stays
+    distinguishable from a day never processed — the same distinction the event
+    store keeps, and for the same reason.
+    """
+    from arbiter.ingestion.store import read_events, write_events
+
+    rows = read_events(root, domain, day)
+    labels = resolve_day(requests_from_rows(rows, domain), fetch_bars, benchmark_for, today)
+    write_events(labels, root, f"labels-{domain}", day)
+    return len(labels)
+
+
+def resolve_day(
+    events: Sequence[ResolutionRequest],
+    fetch_bars: Callable[[str, date, date], list[Bar]],
+    benchmark_for: Callable[[int], str],
+    today: date,
+) -> list[Label]:
+    """Measure every event whose window has closed, and leave the rest.
+
+    Prices are fetched once per symbol rather than once per event: a day's
+    filings concentrate in far fewer issuers than events, so the request count
+    follows the number of distinct symbols.
+
+    An event that cannot be measured is omitted, never approximated. Too little
+    price history and a missing benchmark are ordinary states — a recent event,
+    a thinly covered ticker — and one of them must not cost the day's other
+    labels, so each event is measured independently.
+
+    Args:
+        events: the stored events considered for measurement.
+        fetch_bars: returns a symbol's daily bars across an inclusive window.
+        benchmark_for: returns the benchmark symbol for an issuer's CIK.
+        today: the current session date, used to decide what has settled.
+
+    Returns:
+        A label per measurable event, in the order the events were given.
+    """
+    due = [event for event in events if resolvable_on(event, today)]
+    if not due:
+        return []
+
+    benchmarks = {event.accession_no: benchmark_for(event.cik) for event in due}
+
+    # One window per symbol, issuers and benchmarks alike, so a benchmark shared
+    # by fifty issuers is still fetched once.
+    windows = plan_price_windows(due)
+    for event in due:
+        span = windows[event.ticker]
+        symbol = benchmarks[event.accession_no]
+        existing = windows.get(symbol)
+        windows[symbol] = (
+            span if existing is None else (min(existing[0], span[0]), max(existing[1], span[1]))
+        )
+
+    series = {
+        symbol: fetch_bars(symbol, start, end) for symbol, (start, end) in windows.items()
+    }
+
+    labels: list[Label] = []
+    for event in due:
+        benchmark_symbol = benchmarks[event.accession_no]
+        issuer_sessions = entry_sessions(series.get(event.ticker, []), event.as_of)
+        benchmark_sessions = entry_sessions(series.get(benchmark_symbol, []), event.as_of)
+        try:
+            labels.append(
+                resolve_label(
+                    issuer_bars=issuer_sessions,
+                    benchmark_bars=benchmark_sessions,
+                    benchmark_symbol=benchmark_symbol,
+                    horizon=event.horizon,
+                    accession_no=event.accession_no,
+                )
+            )
+        except UnresolvableEventError:
+            continue
+    return labels
 
 
 def _series_or_raise(bars: list[Bar], horizon: int, name: str) -> list[Bar]:
@@ -75,6 +296,7 @@ def resolve_label(
     benchmark_bars: list[Bar],
     benchmark_symbol: str,
     horizon: int,
+    accession_no: str = "",
 ) -> Label:
     """Measure one event's abnormal return over its horizon.
 
@@ -93,6 +315,7 @@ def resolve_label(
     benchmark_entry, benchmark_exit = benchmark[0], benchmark[horizon]
 
     return Label(
+        accession_no=accession_no,
         abnormal_return=abnormal_return(
             entry_price=entry.open,
             exit_price=exit_.close,
