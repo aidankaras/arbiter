@@ -8,7 +8,12 @@ on:
 
 jobs:
   claude:
-    if: contains(github.event.comment.body, '@claude')
+    # Anyone can comment on a public repository, and this job holds write access.
+    # Restricting it to accounts with write permission keeps a passer-by from
+    # triggering it.
+    if: >-
+      contains(github.event.comment.body, '@claude') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -132,9 +132,21 @@ Commit messages use the imperative mood and explain why a change was made when
 that is not obvious from the diff. Each commit leaves the repository in a working
 state with CI green.
 
-Changes fall into two categories. Branch protection currently requires the four
-CI checks to pass; the review requirement below is a working rule, not yet an
-enforced one:
+Every change reaches the default branch through a pull request. Branch
+protection enforces four things, on administrators included:
+
+1. The four CI checks pass.
+2. The branch is current with the default branch.
+3. History stays linear.
+4. **Every review conversation is resolved.** An automated review runs on each
+   pull request and comments inline; merging is blocked until each of those
+   threads has been read and closed. Since a pull request cannot be approved by
+   its own author, this is what a single-maintainer repository can enforce in
+   place of a second approver, and it is the point where a person is required to
+   engage with what the review found.
+
+Changes fall into two categories, and the second is where that engagement
+matters:
 
 - **Mechanically verifiable** — dependency bumps, formatting, regenerated
   documentation, data refreshes. Automated review and passing CI are sufficient.

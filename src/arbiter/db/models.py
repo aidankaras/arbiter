@@ -11,7 +11,15 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, Numeric, String, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,7 +36,15 @@ class Prediction(Base):
     """
 
     __tablename__ = "predictions"
-    __table_args__ = (CheckConstraint("horizon_days > 0", name="predictions_horizon_positive"),)
+    __table_args__ = (
+        CheckConstraint("horizon_days > 0", name="predictions_horizon_positive"),
+        # These rows cannot be deleted, so a duplicate from a retried write would
+        # be permanent and would double-count in every aggregate. The constraint
+        # makes the retry fail rather than the statistics drift.
+        UniqueConstraint(
+            "event_id", "arm", "prompt_version", name="uq_predictions_event_arm_version"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[str] = mapped_column(String(64), index=True)
@@ -63,6 +79,13 @@ class LlmCall(Base):
     cache_read_tokens: Mapped[int]
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6))
     agent_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Cost per decision cannot be derived from a run identifier alone, because one
+    # run scores many events. Null where a call belongs to no single decision,
+    # such as a backfill.
+    packet_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    prediction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("predictions.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
