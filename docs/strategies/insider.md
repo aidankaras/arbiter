@@ -20,6 +20,16 @@ strategy is almost entirely a parsing and feature-engineering problem.
 | Days to the next scheduled earnings event | Timing relative to known information releases |
 | Rule 10b5-1 plan indicator | Pre-scheduled trades carry little information |
 
+**The plan indicator is read at filing level, not per transaction.** The parsed
+filing exposes one flag, so a Form 4 reporting both a scheduled sale and a
+discretionary purchase marks both as scheduled, and the candidate filter drops
+both. That is a deliberate approximation in the conservative direction: it
+discards informative trades rather than admitting uninformative ones. It is not
+neutral, because filers who mix both kinds in a single filing are not a random
+subset, so the excluded population carries a bias worth measuring before any
+claim rests on it. Reading the per-transaction footnote would remove the
+approximation.
+
 The last is important and frequently overlooked. Transactions executed under a
 pre-established trading plan were scheduled months earlier and say nothing about
 current information. Treating them as signal is a well-documented way to

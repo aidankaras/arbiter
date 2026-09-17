@@ -1,9 +1,8 @@
 name: Code Review
 
-# Runs on demand only. The workflow needs a repository secret that is not yet
-# configured, and a job that fails on every pull request teaches reviewers to
-# ignore a red check rather than read it.
 on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
   workflow_dispatch:
 
 jobs:

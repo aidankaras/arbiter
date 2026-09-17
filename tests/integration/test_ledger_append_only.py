@@ -10,10 +10,15 @@ from arbiter.db.session import session_scope
 pytestmark = pytest.mark.integration
 
 
-def _prediction(packet_hash: str) -> Prediction:
+def _prediction(packet_hash: str, arm: str = "baseline") -> Prediction:
+    """Build a prediction whose arm distinguishes it from its neighbours.
+
+    Predictions are unique per event, arm, and prompt version, so each test
+    writes under its own arm rather than colliding on a shared key.
+    """
     return Prediction(
         event_id="0001234567-25-000001",
-        arm="baseline",
+        arm=arm,
         model_id="logistic-v1",
         prompt_version="n/a",
         packet_hash=packet_hash,
@@ -41,7 +46,7 @@ def test_a_prediction_can_be_written_once(migrated_database: str) -> None:
 def test_updating_a_prediction_is_rejected_by_the_database(migrated_database: str) -> None:
     """A forecast must not be editable once its outcome is known."""
     with session_scope() as session:
-        session.add(_prediction("b" * 64))
+        session.add(_prediction("b" * 64, arm="dl"))
 
     with pytest.raises(DatabaseError, match="append-only"), session_scope() as session:
         session.execute(text("UPDATE predictions SET arm = 'tampered'"))
@@ -49,7 +54,7 @@ def test_updating_a_prediction_is_rejected_by_the_database(migrated_database: st
 
 def test_deleting_a_prediction_is_rejected_by_the_database(migrated_database: str) -> None:
     with session_scope() as session:
-        session.add(_prediction("c" * 64))
+        session.add(_prediction("c" * 64, arm="agent"))
 
     with pytest.raises(DatabaseError, match="append-only"), session_scope() as session:
         session.execute(text("DELETE FROM predictions"))
