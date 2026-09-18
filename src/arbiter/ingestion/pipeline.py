@@ -24,6 +24,14 @@ from arbiter.ingestion.store import write_events
 INSIDER_FORM = "4"
 REDFLAG_FORM = "8-K"
 
+#: Failures that mean one filing could not be parsed, rather than that the
+#: pipeline is broken. `AttributeError` belongs here because the filing client
+#: raises it from inside its own rendering path for documents it cannot resolve,
+#: and one such filing must not cost the day's other events. Anything outside
+#: this set propagates: a quarantine that swallowed every exception would turn a
+#: systemic break into a quiet day of zero events.
+_PARSE_FAILURES = (ValueError, KeyError, AttributeError)
+
 
 #: A day where this share of filings fails to parse is a systemic breakage, not
 #: a handful of odd filers, and is raised rather than quarantined.
@@ -81,7 +89,7 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
             for event in extract_insider_events(record, filing.obj()):
                 if is_candidate(event, min_value_usd):
                     insider_events.append(event)
-        except (ValueError, KeyError) as exc:
+        except _PARSE_FAILURES as exc:
             insider_rejected.append({"accession_no": record.accession_no, "error": str(exc)})
 
     redflag_events: list[RedFlagEvent] = []
@@ -90,7 +98,7 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
     for record, filing in redflag_filings:
         try:
             event = extract_redflag_event(record, filing.obj())
-        except (ValueError, KeyError) as exc:
+        except _PARSE_FAILURES as exc:
             redflag_rejected.append({"accession_no": record.accession_no, "error": str(exc)})
             continue
         if event is not None:

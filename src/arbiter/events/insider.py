@@ -13,6 +13,7 @@ accepted, which is often days later.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -88,6 +89,18 @@ def is_candidate(event: InsiderEvent, min_value_usd: Decimal) -> bool:
 
 
 _BLANK = frozenset({"", "nan", "none", "null", "<na>", "nat"})
+
+#: A listed US equity symbol: one to five letters, optionally a dotted share
+#: class. Matching this rather than excluding known placeholders means a value
+#: the filing client renders in some spelling not yet seen still fails.
+_TICKER = re.compile(r"^[A-Z]{1,5}(\.[A-Z]{1,2})?$")
+
+#: Placeholder words that are shaped like symbols and so pass the rule above.
+#: This is a denylist, which is why it sits on top of the shape rule rather than
+#: in place of it: the shape rule closes the general case, and these are the few
+#: spellings that slip through it. None is a listed US equity, so refusing them
+#: costs nothing.
+_PLACEHOLDER_WORDS = frozenset({"NULL", "NONE", "NAN", "NA", "UNKNOWN", "ERROR", "TBD"})
 
 
 def _is_blank(value: Any) -> bool:
@@ -181,11 +194,18 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
             msg = f"Form 4 table is missing {missing}; the upstream format changed"
             raise KeyError(msg)
 
-        if _is_blank(row["Ticker"]):
-            # Without an identity the event can never be priced, and admitting it
-            # would later surface as an unresolvable event rather than as the
-            # parsing gap it is.
-            msg = f"Ticker is blank in {record.accession_no}; the event cannot be priced"
+        ticker = str(row["Ticker"]).strip()
+        if not _TICKER.match(ticker) or ticker.upper() in _PLACEHOLDER_WORDS:
+            # Validated against what a symbol looks like rather than against a
+            # list of placeholder spellings. The filing client renders a missing
+            # ticker variously as "N/A", "None", or empty, and a denylist loses
+            # to whichever spelling it has not met yet. Without a usable symbol
+            # the event can never be priced, and admitting it would surface later
+            # as an unresolvable event rather than as the parsing gap it is.
+            msg = (
+                f"Ticker {ticker!r} in {record.accession_no} is not a symbol; "
+                "the event cannot be priced"
+            )
             raise ValueError(msg)
 
         events.append(
@@ -193,7 +213,7 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
                 accession_no=record.accession_no,
                 as_of=record.as_of,
                 cik=record.cik,
-                ticker=str(row["Ticker"]).strip(),
+                ticker=ticker,
                 issuer=str(row["Issuer"]),
                 insider_name=str(row["Insider"]),
                 position=str(row["Position"]),

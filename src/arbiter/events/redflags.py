@@ -78,6 +78,26 @@ def extract_redflag_event(record: FilingRecord, report: Any) -> RedFlagEvent | N
         cik=record.cik,
         issuer=record.company,
         item_codes=codes,
-        item_text=str(report.text()),
+        item_text=_item_text(report),
         has_press_release=bool(report.has_press_release),
     )
+
+
+def _item_text(report: Any) -> str:
+    """Return the report's narrative text, or empty when it cannot be rendered.
+
+    A small number of filings expose no primary document the client can render,
+    and asking for their text raises from inside the library. The item codes are
+    what make an event an event, and they come from the filing index rather than
+    the body, so a report whose prose is unavailable is still a real event with
+    a real timestamp.
+
+    The absence is recorded as empty text rather than hidden: an arm reading a
+    packet sees nothing to read, which is the truth, and the text-dependence of
+    this domain means such events are worth counting separately before any claim
+    rests on them.
+    """
+    try:
+        return str(report.text())
+    except (AttributeError, ValueError, TypeError):
+        return ""
