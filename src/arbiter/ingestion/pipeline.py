@@ -4,14 +4,19 @@ Sequenced as fetch, extract, store, with no inference at any step. Each stage is
 idempotent and keyed by date, so a failed run is re-run rather than repaired,
 and re-running a completed day produces the same dataset.
 
-A filing that cannot be timestamped raises rather than being skipped. An
-untimestampable filing is a defect to investigate, and dropping it silently
-would leave a gap that no later check could distinguish from a quiet day.
+A filing that cannot be timestamped is excluded and recorded by accession
+number, never dropped silently and never dated by a substitute such as the
+filing date, which carries no time of day and would place the event at
+midnight. Recording is what keeps the exclusion honest: a gap nobody can
+account for is indistinguishable from a defect, and enough of them still stops
+the day, because EDGAR omitting acceptance times at scale is a break worth
+failing on rather than absorbing.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -45,6 +50,27 @@ _SYSTEMIC_REJECTION_RATE = 0.05
 
 class SystemicParseFailureError(RuntimeError):
     """Raised when so many filings fail to parse that the day is untrustworthy."""
+
+
+def _untimestamped_into(rejected: list[dict[str, str]]) -> Callable[[str], None]:
+    """Return a sink that records filings EDGAR gave no acceptance time for.
+
+    They are counted as rejections rather than as an ordinary exclusion,
+    because unlike an issuer with no listed stock this is the source failing to
+    supply something it normally supplies — and the day's rejection rate is
+    what catches that happening at scale.
+    """
+
+    def record(accession_no: str) -> None:
+        rejected.append(
+            {
+                "accession_no": accession_no,
+                "error": "EDGAR supplied no acceptance time; the filing cannot be "
+                "placed in time and cannot become an event",
+            }
+        )
+
+    return record
 
 
 def _quarantine(
@@ -86,7 +112,13 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
     insider_events: list[InsiderEvent] = []
     insider_rejected: list[dict[str, str]] = []
     insider_unpriceable: list[dict[str, str]] = []
-    insider_filings = filings_with_objects(INSIDER_FORM, day)
+    # Held apart from the other rejections only so that the day's denominator
+    # can include them: they never reach the loop below, so counting them as
+    # failures without counting them as attempts would overstate the rate.
+    insider_untimestamped: list[dict[str, str]] = []
+    insider_filings = filings_with_objects(
+        INSIDER_FORM, day, _untimestamped_into(insider_untimestamped)
+    )
     for record, filing in insider_filings:
         # One malformed filing must not cost the other nine hundred. The failure
         # is recorded with its accession number so it can be investigated, which
@@ -108,7 +140,10 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
 
     redflag_events: list[RedFlagEvent] = []
     redflag_rejected: list[dict[str, str]] = []
-    redflag_filings = filings_with_objects(REDFLAG_FORM, day)
+    redflag_untimestamped: list[dict[str, str]] = []
+    redflag_filings = filings_with_objects(
+        REDFLAG_FORM, day, _untimestamped_into(redflag_untimestamped)
+    )
     for record, filing in redflag_filings:
         try:
             event = extract_redflag_event(record, filing.obj())
@@ -118,14 +153,28 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
         if event is not None:
             redflag_events.append(event)
 
-    # Unlistable issuers are subtracted from what was attempted, not just from
-    # what was rejected. Leaving them in the denominator would understate the
-    # share of genuinely unparseable filings and mask a real format break on a
-    # day that happened to carry many of them.
+    # A filing with no acceptance time was still a filing this day attempted, so
+    # it belongs on both sides of the ratio. Unlistable issuers belong on
+    # neither: leaving them in the denominator would understate the share of
+    # genuinely unparseable filings and mask a real format break on a day that
+    # happened to carry many of them.
+    insider_rejected.extend(insider_untimestamped)
+    redflag_rejected.extend(redflag_untimestamped)
+
     _quarantine(
-        insider_rejected, root, "insider", day, len(insider_filings) - len(insider_unpriceable)
+        insider_rejected,
+        root,
+        "insider",
+        day,
+        len(insider_filings) + len(insider_untimestamped) - len(insider_unpriceable),
     )
-    _quarantine(redflag_rejected, root, "redflag", day, len(redflag_filings))
+    _quarantine(
+        redflag_rejected,
+        root,
+        "redflag",
+        day,
+        len(redflag_filings) + len(redflag_untimestamped),
+    )
 
     write_events(insider_events, root, "insider", day)
     write_events(redflag_events, root, "redflag", day)

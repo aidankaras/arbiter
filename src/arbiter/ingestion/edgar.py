@@ -9,6 +9,7 @@ than a calendar date.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -16,7 +17,7 @@ from typing import Any
 from edgar import get_filings, set_identity
 
 from arbiter.config import get_settings
-from arbiter.ingestion.timestamps import acceptance_time_utc
+from arbiter.ingestion.timestamps import MissingAcceptanceTimeError, acceptance_time_utc
 
 
 class EmptyTradingDayError(RuntimeError):
@@ -101,11 +102,50 @@ def to_record(filing: Any) -> FilingRecord:
     )
 
 
-def filings_with_objects(form: str, on: date) -> list[tuple[FilingRecord, Any]]:
+def records_from_filings(
+    filings: Iterable[Any],
+) -> tuple[list[tuple[FilingRecord, Any]], list[str]]:
+    """Convert client filings into records, reporting those that carry no time.
+
+    Returns the records that could be timestamped, each with its source filing,
+    and the accession numbers of those that could not.
+
+    A filing with no acceptance time cannot be placed in time and so cannot
+    become an event, but it is one filing among thousands accepted the same day.
+    Converting them in a single pass meant the first such filing discarded the
+    whole day, which is how a historical backfill lost days at a time. It is
+    excluded and named instead, which is what the exclusion was always
+    documented to be — and naming it is what keeps the exclusion from being
+    silent.
+
+    Raises:
+        ValueError: an acceptance time arrived carrying a timezone. Unlike a
+            missing one, that means the source's contract changed, and skipping
+            it would shift every event in the day by hours without saying so.
+    """
+    records: list[tuple[FilingRecord, Any]] = []
+    untimestamped: list[str] = []
+
+    for filing in filings:
+        try:
+            records.append((to_record(filing), filing))
+        except MissingAcceptanceTimeError:
+            untimestamped.append(str(filing.accession_no))
+
+    return records, untimestamped
+
+
+def filings_with_objects(
+    form: str, on: date, on_untimestamped: Callable[[str], None] | None = None
+) -> list[tuple[FilingRecord, Any]]:
     """Return each filing of one form type accepted on one day, with its source.
 
     The source filing is returned alongside the record because the per-domain
     extractors need the parsed document, which only the client can produce.
+
+    `on_untimestamped` receives the accession number of any filing that carries
+    no acceptance time. Those are excluded from the result, and a caller that
+    passes nothing is choosing not to record them.
     """
     configure_identity()
     filings = get_filings(form=form, filing_date=on.isoformat())
@@ -122,7 +162,12 @@ def filings_with_objects(form: str, on: date) -> list[tuple[FilingRecord, Any]]:
             )
             raise EmptyTradingDayError(msg)
         return []
-    return [(to_record(filing), filing) for filing in filings]
+
+    records, untimestamped = records_from_filings(filings)
+    if on_untimestamped is not None:
+        for accession_no in untimestamped:
+            on_untimestamped(accession_no)
+    return records
 
 
 def daily_filings(form: str, on: date) -> list[FilingRecord]:
