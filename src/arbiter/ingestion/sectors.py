@@ -145,6 +145,26 @@ def issuer_sic(cik: int) -> str | None:
     return str(sic) if sic else None
 
 
+@lru_cache(maxsize=4096)
+def issuer_ticker(cik: int) -> str | None:
+    """Return an issuer's primary ticker, or `None` when EDGAR lists none.
+
+    Form 4 reports a ticker directly, but an 8-K does not: a current report
+    identifies its filer by CIK alone. Without this lookup the red-flag domain
+    cannot be priced at all, and every event in it would be recorded as
+    unresolvable for a reason that has nothing to do with the market.
+
+    An issuer with no listed ticker returns `None` rather than a guess. Such a
+    filer is genuinely unpriceable here, and the caller records that rather than
+    measuring the wrong security.
+    """
+    configure_identity()
+    # Annotated at the boundary: the client returns an untyped sequence, and
+    # without this the element handed to `str` is an unknown type.
+    tickers: list[object] = list(getattr(Company(cik), "tickers", None) or [])
+    return str(tickers[0]) if tickers else None
+
+
 def benchmark_for_issuer(cik: int) -> str:
     """Return the benchmark symbol an issuer's returns are measured against."""
     return sector_etf_for_sic(issuer_sic(cik))
