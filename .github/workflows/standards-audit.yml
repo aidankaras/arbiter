@@ -1,0 +1,158 @@
+name: Standards audit
+
+# A scheduled review of the whole repository against the correctness properties
+# this project depends on, rather than a review of one diff. Defects here are
+# rarely local: the ones that have mattered most were a feature that could not
+# vary, a window that deleted one weekday, and a test that asserted its own
+# implementation. None of those appear in a single pull request's changed lines,
+# and all of them survived a green suite.
+#
+# The audit proposes; it does not amend. Findings arrive as a pull request so
+# that a change to a measurement is reviewed with the same care as a change to
+# the code that produces it.
+
+on:
+  schedule:
+    # 09:00 UTC on the 1st and 15th. Day-of-week is left unrestricted on
+    # purpose: cron combines a restricted day-of-month with a restricted
+    # day-of-week using OR, so naming both would fire far more often than
+    # intended.
+    - cron: "0 9 1,15 * *"
+  workflow_dispatch:
+
+concurrency:
+  group: standards-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Review the repository against its stated standards
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Read,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(uv run pytest:*),Bash(uv run ruff:*),Write"'
+          prompt: |
+            Audit this repository against the correctness and quality properties it
+            claims for itself. Read CLAUDE.md, docs/methodology.md and
+            docs/code-standards.md first — they state the project's non-negotiables
+            and its own record of the failure modes it has already hit. Judge the
+            code against those, not against generic style preferences.
+
+            Report only defects you can demonstrate. For each one, give the file and
+            line, the concrete input or state that produces the wrong behaviour, and
+            what it should do instead. A finding you cannot show failing is a
+            preference, and preferences do not belong in this report.
+
+            ## Correctness, in priority order
+
+            1. **Point-in-time integrity.** Does any feature, label, or retrieval read
+               information that did not exist at the decision instant? Check
+               `src/arbiter/arms/features.py`, `src/arbiter/evaluation/resolution.py`
+               and `src/arbiter/arms/evaluate.py` especially. A value that depends on
+               which events later turned out to be measurable is a leak even when
+               every individual line is correct.
+            2. **Errors correlated with the data.** An error whose size varies with a
+               dimension of the data — weekday, sector, liquidity, halt status —
+               removes a category rather than thinning the sample, and survives every
+               distributional sanity check. Look for arithmetic over sessions,
+               calendars, or windows that assumes uniformity.
+            3. **Batch operations where one bad element costs the batch.** For each
+               batched request or bulk transformation, state what a single rejected
+               or malformed element costs. If the answer is the whole batch, that is
+               a finding.
+            4. **Silent failure.** Any `except` that swallows without recording, any
+               fallback to a default that hides a failure, any path where an empty
+               result is indistinguishable from an error. Exclusions must be recorded
+               with a reason, never dropped.
+            5. **Statistical validity** in `src/arbiter/evaluation/metrics.py` and
+               `src/arbiter/arms/evaluate.py`: observations pooled at the wrong unit,
+               correlated observations counted as independent, a metric that cannot
+               fail, a threshold that no test pins, a constant or collinear feature
+               earning a reported weight.
+
+            ## Tests
+
+            Run `uv run pytest tests/unit -q` to confirm the suite is green, then
+            judge whether it is meaningful. Report:
+
+            - Tests that cannot fail — an assertion that restates the implementation,
+              a property that references the function under test, a fixture whose
+              construction guarantees the result.
+            - Tests that assert implementation rather than requirement, so a correct
+              refactor breaks them.
+            - Behaviour with no negative control: a check that something is detected,
+              with nothing asserting a clean input reports nothing.
+            - Boundaries and thresholds with no test at the boundary.
+
+            ## Documentation and configuration
+
+            - **README.md and docs/**: every present-tense claim must correspond to
+              code that exists. Verify each against the tree rather than reading it
+              as given. Unbuilt work must be marked unbuilt.
+            - **CLAUDE.md**: rules must match what the code actually does, and must
+              not contradict docs/ or each other.
+            - **reports/**: every figure must be reproducible by a command in this
+              repository, and must state the sample it rests on.
+            - **pyproject.toml**: every declared dependency should be imported
+              somewhere. Report any that are not.
+            - **.github/workflows/**: action versions pinned, permissions no broader
+              than the job needs, no secret reachable by untrusted input.
+            - **Comments and docstrings**: state contracts, units and failure modes
+              rather than restating the signature; explain why rather than what.
+
+            ## Output
+
+            Write the report to `reports/standards-audit.md`, replacing any previous
+            one. Structure it as: a one-paragraph verdict; findings ranked by what
+            each would corrupt, with file, line, and a demonstrable failure; then a
+            short list of what you checked and found sound, stated plainly.
+
+            Change nothing else. Do not edit source, tests, documentation or
+            configuration — a defect in a measurement is reviewed before it is
+            corrected, and an unattended fix to a design decision is exactly the
+            confident, plausible, wrong change this project exists to catch.
+
+            If you find no demonstrable defect, say so in the report and write
+            nothing further. An audit that manufactures findings to appear thorough
+            trains its reader to ignore the next one.
+
+      - name: Open a pull request when the report changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- reports/standards-audit.md; then
+            echo "No change to the audit report; nothing to propose."
+            exit 0
+          fi
+
+          branch="standards-audit/$(date -u +%Y-%m-%d)"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add reports/standards-audit.md
+          git commit -m "Record the scheduled standards audit for $(date -u +%Y-%m-%d)"
+          git push -u origin "$branch"
+
+          gh pr create \
+            --title "Standards audit: $(date -u +%Y-%m-%d)" \
+            --body "$(printf '%s\n' \
+              'A scheduled review of the whole repository against the correctness properties stated in `CLAUDE.md`, `docs/methodology.md` and `docs/code-standards.md`.' \
+              '' \
+              'The audit proposes and does not amend: it writes `reports/standards-audit.md` and changes nothing else. Findings are ranked by what each would corrupt, and each names a file, a line and a demonstrable failure.' \
+              '' \
+              'Review the findings before acting on any of them. A defect in a measurement is reviewed with the same care as a change to the code that produces it.')" \
+            --base main \
+            --head "$branch"
