@@ -48,24 +48,53 @@ def test_no_feature_reads_the_outcome_or_anything_after_the_filing():
 
 
 def test_a_purchase_and_a_sale_are_distinguished():
+    """One indicator, not two: the screen admits only these two codes, so a
+    separate sale flag would be one minus this one and collinear with it."""
     purchase = event_features(_row(transaction_code="P"), 1)
     sale = event_features(_row(transaction_code="S"), 1)
 
-    assert (purchase["is_purchase"], purchase["is_sale"]) == (1.0, 0.0)
-    assert (sale["is_purchase"], sale["is_sale"]) == (0.0, 1.0)
+    assert purchase["is_purchase"] == 1.0
+    assert sale["is_purchase"] == 0.0
+    assert "is_sale" not in purchase
 
 
-def test_a_code_that_is_neither_is_marked_as_neither():
-    """Grants, exercises and gifts are events but not open-market conviction."""
+def test_a_code_the_screen_would_reject_is_not_marked_a_purchase():
+    """Grants, exercises and gifts never reach the store; nothing reads as a buy."""
     gift = event_features(_row(transaction_code="G"), 1)
 
-    assert (gift["is_purchase"], gift["is_sale"]) == (0.0, 0.0)
+    assert gift["is_purchase"] == 0.0
 
 
-def test_a_scheduled_trade_is_flagged():
-    """Trades under a 10b5-1 plan are arranged months ahead and carry little signal."""
-    assert event_features(_row(is_10b5_1=True), 1)["is_10b5_1"] == 1.0
-    assert event_features(_row(is_10b5_1=False), 1)["is_10b5_1"] == 0.0
+@pytest.mark.parametrize("excluded", ["is_10b5_1", "is_sale"])
+def test_a_feature_the_screen_makes_constant_is_not_declared(excluded: str):
+    """A constant column standardises to zeros and earns a weight that is noise.
+
+    `is_candidate` admits only discretionary open-market purchases and sales.
+    A scheduled-trade indicator is therefore false on every stored row, and a
+    sale indicator is exactly one minus the purchase indicator. Both were
+    declared features until a fit against real data showed one dead column and
+    one collinear pair being printed in a report as though they meant something.
+    """
+    assert excluded not in FEATURE_NAMES
+
+
+def test_the_declared_features_vary_across_events_the_screen_admits():
+    """Every remaining column must actually distinguish one admitted event from another."""
+    varied = [
+        event_features(_row(transaction_code="P", position="CEO", cluster_seed=0), 3),
+        event_features(
+            _row(
+                transaction_code="S",
+                position="Director, 10% Owner",
+                value_usd=Decimal("9000000"),
+                remaining_shares=None,
+            ),
+            1,
+        ),
+    ]
+
+    for name in FEATURE_NAMES:
+        assert varied[0][name] != varied[1][name], f"{name} does not distinguish these events"
 
 
 def test_value_enters_on_a_log_scale():
@@ -165,7 +194,7 @@ def test_features_are_laid_out_in_the_declared_column_order():
 def test_a_row_missing_a_stored_field_is_refused_rather_than_defaulted():
     """A silent default would mean the reader and writer disagree unnoticed."""
     incomplete = _row()
-    del incomplete["is_10b5_1"]
+    del incomplete["position"]
 
     with pytest.raises(KeyError):
         event_features(incomplete, 1)

@@ -6,12 +6,15 @@ constraint: the four arms are comparable only if each sees the same information
 at the same instant, and a feature that quietly encodes the future would make
 the baseline unbeatable and the comparison meaningless.
 
-The features follow what the literature has found to separate informative
-insider trades from uninformative ones. The strongest is whether the trade was
-scheduled: transactions made under a 10b5-1 plan are arranged months ahead and
-carry little information, while the discretionary ones carry most of what has
-been measured. Size relative to the insider's remaining stake matters for the
-same reason — selling a tenth of a holding says less than selling most of it.
+What separates informative insider trades from uninformative ones is largely
+decided before these features are computed. The screen in `is_candidate` keeps
+only discretionary open-market purchases and sales: trades scheduled under a
+10b5-1 plan are arranged months ahead and carry little information, and grants,
+exercises and gifts are not expressions of conviction at all. Every stored event
+has therefore already passed that filter, so neither the plan flag nor the
+excluded transaction codes vary here and neither is a feature. What remains to
+distinguish events is direction, size relative to the insider's own stake, role,
+and whether several insiders moved together.
 
 Absent values are represented as an explicit indicator alongside a neutral fill
 rather than imputed silently. A filing that reports no post-transaction holding
@@ -30,11 +33,15 @@ from typing import Any
 #: Feature order is fixed and exported because a model is fitted in one process
 #: and scored in another; a reordering between the two would silently mismatch
 #: coefficients to columns and produce plausible, wrong forecasts.
+#: `is_sale` is absent deliberately: the screen admits only purchases and sales,
+#: so it would be one minus `is_purchase` and collinear with it, splitting one
+#: effect across two reported weights. `is_10b5_1` is absent for the stronger
+#: reason that the screen admits no scheduled trade at all, leaving the column
+#: constant — a standardised constant is zeros, and its fitted weight would be
+#: noise printed in the report as though it meant something.
 FEATURE_NAMES: tuple[str, ...] = (
     "is_purchase",
-    "is_sale",
     "log_value_usd",
-    "is_10b5_1",
     "fraction_of_holding",
     "reports_holding",
     "is_officer",
@@ -46,7 +53,6 @@ FEATURE_NAMES: tuple[str, ...] = (
 #: Transaction codes for open-market trades. Other codes cover grants, exercises
 #: and gifts, which are kept as events but are not open-market conviction.
 _PURCHASE = "P"
-_SALE = "S"
 
 _OFFICER_TITLES = ("officer", "ceo", "cfo", "coo", "president", "chief", "vp", "vice president")
 _DIRECTOR_TITLES = ("director",)
@@ -110,12 +116,9 @@ def event_features(row: Mapping[str, Any], insiders_same_issuer: int) -> dict[st
 
     return {
         "is_purchase": float(code == _PURCHASE),
-        "is_sale": float(code == _SALE),
-        # Transaction value spans several orders of magnitude, and what
-        # distinguishes trades is closer to their ratio than their difference:
-        # a $10m sale is not ten thousand times more informative than a $1k one.
+        # Value spans orders of magnitude, and what distinguishes trades is
+        # closer to their ratio than their difference.
         "log_value_usd": math.log1p(float(value)) if value is not None else 0.0,
-        "is_10b5_1": float(bool(row["is_10b5_1"])),
         "fraction_of_holding": fraction,
         "reports_holding": reports_holding,
         "is_officer": officer,

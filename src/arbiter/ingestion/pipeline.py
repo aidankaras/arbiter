@@ -178,7 +178,7 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
 
     write_events(insider_events, root, "insider", day)
     write_events(redflag_events, root, "redflag", day)
-    write_unpriceable(insider_unpriceable, root, "insider", day)
+    write_unpriceable(insider_unpriceable, root, "insider", day, stage="extraction")
 
     return {
         "insider": len(insider_events),

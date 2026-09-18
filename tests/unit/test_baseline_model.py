@@ -21,7 +21,6 @@ from arbiter.arms.features import FEATURE_NAMES
 def _features(purchase: float, value: float = 12.0, **overrides: float) -> dict[str, float]:
     row = dict.fromkeys(FEATURE_NAMES, 0.0)
     row["is_purchase"] = purchase
-    row["is_sale"] = 1.0 - purchase
     row["log_value_usd"] = value
     row.update(overrides)
     return row
@@ -50,7 +49,6 @@ def test_the_learned_weight_points_the_way_the_data_does():
     weights = fit_baseline(features, outcomes).coefficients()
 
     assert weights["is_purchase"] > 0
-    assert weights["is_sale"] < 0
 
 
 def test_a_feature_carrying_no_information_earns_no_weight():

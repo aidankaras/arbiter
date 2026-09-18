@@ -25,7 +25,6 @@ DAYS = [date(2026, 6, day) for day in (1, 2, 3, 4, 5, 8, 9, 10, 11, 12)]
 def _features(purchase: float) -> dict[str, float]:
     row = dict.fromkeys(FEATURE_NAMES, 0.0)
     row["is_purchase"] = purchase
-    row["is_sale"] = 1.0 - purchase
     row["log_value_usd"] = 12.0
     return row
 
