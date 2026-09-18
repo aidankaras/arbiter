@@ -13,16 +13,19 @@ point-in-time evidence packet. Four independent forecasting approaches will then
 score that identical packet, each tracked as a shadow paper portfolio with full
 decision provenance and per-decision cost accounting.
 
-> **Status: the ingestion half is built; no forecasting arm exists yet.**
+> **Status: the measurement pipeline and the conventional arm are built; the
+> three language-model arms are not.**
 >
 > Working today: EDGAR ingestion for Form 4 and 8-K, event extraction for the
 > insider and red-flag domains, a date-partitioned event store, market data,
-> abnormal-return labels, an append-only ledger, and spend metering.
+> abnormal-return labels, a resumable historical backfill, the baseline
+> forecasting arm, out-of-sample evaluation by information coefficient and
+> calibration, an append-only ledger, and spend metering.
 >
-> Designed but not built: the evidence packet builder, all four arms, the
-> dashboard, and the paper portfolios. Sections describing those use the future
-> tense; anything in the present tense refers to code in this repository.
-> Paper trading only, always.
+> Designed but not built: the evidence packet builder, the three language-model
+> arms, the dashboard, and the paper portfolios. Sections describing those use
+> the future tense; anything in the present tense refers to code in this
+> repository. Paper trading only, always.
 
 ## Quickstart
 
@@ -76,21 +79,56 @@ whose filers were unlistable.
 Market data additionally requires `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`;
 EDGAR ingestion needs no credentials beyond the contact string the SEC requires.
 
+### Building a history and measuring against it
+
+One day proves the pipeline runs. Measuring anything needs a history:
+
+```bash
+uv run arbiter backfill 2026-03-02 2026-08-14 --every 4
+uv run arbiter report --domain insider
+```
+
+`backfill` ingests and labels a range of trading days, writing its progress as
+it goes. Days already stored are skipped, so an interrupted run is restarted
+rather than repaired.
+
+`--every` is the lever on how long a run takes. A day costs the same regardless
+of how many of its filings qualify, because each filing must be fetched to find
+out and the acceptance timestamp that makes an event point-in-time is not
+carried in EDGAR's bulk index. Volume varies roughly fourfold across the year —
+736 Form 4 filings on one sampled day against 3,001 in early March, when annual
+grants and vesting cluster — so a day takes between three and fourteen minutes.
+Sampling every Nth trading day spreads observations across months at the cost of
+a contiguous block, which matters because events filed on one day share a market
+factor the sector benchmark only partly removes.
+
+`report` fits the baseline arm on the earlier fraction of the stored days and
+scores it on the rest, writing the result to [`reports/`](reports/). The split
+is chronological, never random: a random split would place events from one day
+on both sides and report as skill what is partly memory.
+
 ---
 
-## The four arms (designed, not yet built)
+## The four arms
 
-Each event will be scored by four approaches that see byte-identical inputs:
+Each event is scored by four approaches that see byte-identical inputs:
 
-| Arm | Approach | Sees text | Uses an LLM |
-|---|---|---|---|
-| `baseline` | Logistic regression and gradient boosting over structured features | No | No |
-| `dl` | Fine-tuned transformer encoder with a tabular head | Yes | No |
-| `agent` | LangGraph agent team with per-domain analysts | Yes | Yes |
-| `arbiter` | A different model family reviewing the other three and their reasoning | Indirect | Yes |
+| Arm | Approach | Sees text | Uses an LLM | Built |
+|---|---|---|---|---|
+| `baseline` | Logistic regression over structured filing features | No | No | Yes |
+| `dl` | Fine-tuned transformer encoder with a tabular head | Yes | No | No |
+| `agent` | Agent team with per-domain analysts | Yes | Yes | No |
+| `arbiter` | A different model family reviewing the other three and their reasoning | Indirect | Yes | No |
 
 `baseline` is the null hypothesis. Anything that cannot beat a logistic
 regression on a handful of features has not demonstrated anything.
+
+It is deliberately weak, and stays that way. An elaborate control would confound
+the question being asked: if a gradient-boosted ensemble beat the agent, the
+finding would be about model capacity rather than about reading a filing. Its
+regularisation is left at the library default for the same reason — tuning it
+against the evaluation data would report the best of several attempts as though
+it were one measurement.
 
 The `arbiter` arm is a fourth prediction, not a gate. It never vetoes the other
 arms, because an arm whose live record has been filtered by another model is no
