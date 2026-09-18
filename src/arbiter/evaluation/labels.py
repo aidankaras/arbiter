@@ -16,6 +16,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+#: Returns are reported to twelve decimal places, a hundredth of a basis point.
+#: Finer digits come from decimal division rather than from prices.
+RETURN_PRECISION = Decimal("0.000000000001")
+
 
 class InsufficientPriceDataError(ValueError):
     """Raised when an event cannot be labelled from the available prices.
@@ -66,4 +70,10 @@ def abnormal_return(
 
     stock_return = (stock_exit - stock_entry) / stock_entry
     index_return = (index_exit - index_entry) / index_entry
-    return stock_return - index_return
+
+    # Quantized deliberately, where the number is computed. Dividing decimals
+    # yields as many digits as the arithmetic context allows, and past twelve
+    # decimal places those digits describe the division rather than the market:
+    # they are below a hundredth of a basis point. Keeping them would push false
+    # precision into storage and into every statistic computed downstream.
+    return (stock_return - index_return).quantize(RETURN_PRECISION)
