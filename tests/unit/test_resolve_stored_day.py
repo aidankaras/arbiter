@@ -5,6 +5,7 @@ plain rows, and what the resolver needs is a typed request carrying the horizon
 its domain implies.
 """
 
+import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from arbiter.evaluation.resolution import HORIZONS, requests_from_rows
+from arbiter.events.redflags import RedFlagEvent
 from arbiter.ingestion.market import Bar
 
 
@@ -112,3 +114,66 @@ def test_a_day_with_no_resolvable_events_still_records_a_partition(tmp_path: Pat
 
     assert written == 0
     assert read_events(tmp_path, "labels-insider", date(2026, 8, 28)) == []
+
+
+def _unpriceable(root: Path, domain: str, day: date) -> list[dict[str, str]]:
+    record = root / "unpriceable" / domain / f"{day.isoformat()}.json"
+    return json.loads(record.read_text(encoding="utf-8"))
+
+
+def test_a_processed_day_records_what_it_could_not_price(tmp_path: Path):
+    """An issuer with no listed security is a finding; dropping it silently is not."""
+    from arbiter.evaluation.resolution import resolve_stored_day
+    from arbiter.ingestion.store import write_events
+
+    day = date(2026, 8, 3)
+    write_events(
+        [
+            RedFlagEvent(
+                accession_no="r-1",
+                as_of=datetime(2026, 8, 3, 20, 47, tzinfo=UTC),
+                cik=1423689,
+                issuer="AGNC Investment Corp.",
+                item_codes=("4.02",),
+                item_text="Non-Reliance on Previously Issued Financial Statements",
+                has_press_release=False,
+            )
+        ],
+        tmp_path,
+        "redflag",
+        day,
+    )
+
+    resolve_stored_day(
+        day=day,
+        domain="redflag",
+        root=tmp_path,
+        fetch_bars=lambda symbols, start, end: {symbol: [] for symbol in symbols},
+        benchmark_for=lambda cik: "XLF",
+        today=date(2026, 9, 17),
+        ticker_for=lambda cik: None,
+    )
+
+    assert _unpriceable(tmp_path, "redflag", day) == [
+        {"accession_no": "r-1", "reason": "issuer has no listed ticker"}
+    ]
+
+
+def test_a_day_that_priced_everything_still_records_an_empty_list(tmp_path: Path):
+    """A missing record would mean "nothing was dropped" and "never ran" alike."""
+    from arbiter.evaluation.resolution import resolve_stored_day
+    from arbiter.ingestion.store import write_events
+
+    day = date(2026, 8, 28)
+    write_events([], tmp_path, "insider", day)
+
+    resolve_stored_day(
+        day=day,
+        domain="insider",
+        root=tmp_path,
+        fetch_bars=lambda symbols, start, end: {symbol: [] for symbol in symbols},
+        benchmark_for=lambda cik: "XLP",
+        today=date(2026, 9, 1),
+    )
+
+    assert _unpriceable(tmp_path, "insider", day) == []
