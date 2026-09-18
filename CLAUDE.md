@@ -54,6 +54,41 @@ Concretely:
 - Commit messages read as engineering history: what changed and why, in the
   imperative mood.
 
+## Failure modes this codebase has actually hit
+
+Each of these produced a plausible, passing, wrong result rather than an error.
+They are recorded here, not in a document someone would have to think to open,
+because by the time you suspect the problem you have already made it.
+
+**Batching couples failures.** Work batched for efficiency needs error handling
+written for the *item*, not the batch. This has cost whole days of data four
+separate times: one preferred-share symbol rejecting a 75-symbol price request,
+one filing without an acceptance time aborting 3,000 others, a price window one
+session short deleting every Friday, one refused sector ETF voiding every event
+in that sector. Whenever you batch, ask what a single bad element costs. If the
+answer is "everything", add per-item isolation.
+
+**Excluded-and-recorded is not dropped-silently.** Conflating them forces a
+false choice between corrupting the dataset and crashing on any bad row.
+Recording *which* item was excluded and *why* makes exclusion safe and still
+lets a rate guard catch systemic breakage.
+
+**An error correlated with the data is worse than a large one.** A window
+shortfall that depends on weekday deletes Fridays; a bar misalignment that
+depends on trading halts concentrates on exactly the bad news being measured.
+When you find a data-handling bug, the question is not "how big" but "is it
+correlated with the outcome".
+
+**A test must not restate the implementation.** A twenty-case parameterised
+test written to guard the window bug asserted that the window reached the
+expression the window is computed from — it read `x >= x` and passed on the
+defect. Derive a property from the requirement, never from the code. Prove a
+regression test bites by replaying the old behaviour.
+
+**Unit tests here have never caught a real defect.** Every one surfaced in a
+live run. A mutation audit found 9 of 22 semantic mutations surviving the whole
+suite. Run `pytest -m integration` before believing anything works.
+
 ## Engineering standards
 
 Full detail in [`docs/code-standards.md`](docs/code-standards.md). The summary:
