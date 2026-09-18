@@ -13,7 +13,6 @@ accepted, which is often days later.
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -21,6 +20,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from arbiter.ingestion.edgar import FilingRecord
+from arbiter.ingestion.market import is_tradeable_symbol
 
 OPEN_MARKET_CODES = frozenset({"P", "S"})
 
@@ -89,18 +89,6 @@ def is_candidate(event: InsiderEvent, min_value_usd: Decimal) -> bool:
 
 
 _BLANK = frozenset({"", "nan", "none", "null", "<na>", "nat"})
-
-#: A listed US equity symbol: one to five letters, optionally a dotted share
-#: class. Matching this rather than excluding known placeholders means a value
-#: the filing client renders in some spelling not yet seen still fails.
-_TICKER = re.compile(r"^[A-Z]{1,5}(\.[A-Z]{1,2})?$")
-
-#: Placeholder words that are shaped like symbols and so pass the rule above.
-#: This is a denylist, which is why it sits on top of the shape rule rather than
-#: in place of it: the shape rule closes the general case, and these are the few
-#: spellings that slip through it. None is a listed US equity, so refusing them
-#: costs nothing.
-_PLACEHOLDER_WORDS = frozenset({"NULL", "NONE", "NAN", "NA", "UNKNOWN", "ERROR", "TBD"})
 
 
 def _is_blank(value: Any) -> bool:
@@ -195,7 +183,7 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
             raise KeyError(msg)
 
         ticker = str(row["Ticker"]).strip()
-        if not _TICKER.match(ticker) or ticker.upper() in _PLACEHOLDER_WORDS:
+        if not is_tradeable_symbol(ticker):
             # Validated against what a symbol looks like rather than against a
             # list of placeholder spellings. The filing client renders a missing
             # ticker variously as "N/A", "None", or empty, and a denylist loses

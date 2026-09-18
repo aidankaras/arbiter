@@ -17,6 +17,7 @@ is what the API returns.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -39,6 +40,28 @@ NEWS_ENDPOINT = "https://data.alpaca.markets/v1beta1/news"
 
 #: The consolidated feed. Never substituted, including when it refuses a window.
 CONSOLIDATED_FEED = "sip"
+
+
+#: A plain common-equity symbol: one to five letters, optionally a dotted share
+#: class. Preferred issues, warrants, and units carry suffixes this rejects, and
+#: they are outside what this study measures. Matching the shape of a valid
+#: symbol rather than excluding known-bad spellings is deliberate: the filing
+#: sources render unusable identifiers in forms no denylist anticipates.
+_TRADEABLE_SYMBOL = re.compile(r"^[A-Z]{1,5}(\.[A-Z]{1,2})?$")
+
+#: Placeholder words shaped like symbols, which the rule above cannot exclude.
+_PLACEHOLDER_SYMBOLS = frozenset({"NULL", "NONE", "NAN", "NA", "UNKNOWN", "ERROR", "TBD"})
+
+
+def is_tradeable_symbol(value: object) -> bool:
+    """Report whether a value is a symbol this project can price.
+
+    Applied wherever a symbol enters the system, because one unusable symbol in
+    a batched price request is rejected by the service and costs every other
+    symbol in that request.
+    """
+    text = str(value or "").strip().upper()
+    return bool(_TRADEABLE_SYMBOL.match(text)) and text not in _PLACEHOLDER_SYMBOLS
 
 
 class MissingCredentialsError(RuntimeError):
@@ -213,6 +236,84 @@ def daily_bars(
         if not next_token:
             return collected
         page_token = str(next_token)
+
+
+#: A batch losing this share of its symbols to individual rejection is a
+#: malformed request rather than a few uncovered tickers. Raising then keeps a
+#: broken window from being reported as a day on which nothing traded.
+_SYSTEMIC_REJECTION_RATE = 0.25
+
+
+class SystemicRejectionError(RuntimeError):
+    """Raised when a price request is rejected for its own sake.
+
+    Distinguishes "these particular symbols are not covered" from "this request
+    is wrong", which otherwise look identical: both end with symbols that have
+    no prices.
+    """
+
+
+def _bars_isolating_rejections(
+    symbols: Sequence[str], start: date, end: date, today: date
+) -> tuple[dict[str, list[Bar]], list[str]]:
+    """Fetch one batch, splitting it on rejection, and report what was refused.
+
+    The refused symbols are returned rather than inferred from which series came
+    back empty: a symbol that simply did not trade in the window is also empty,
+    and conflating the two would let a quiet window look like a broken request.
+    """
+    try:
+        return daily_bars(symbols, start, end, today), []
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 400:
+            raise
+        if len(symbols) == 1:
+            return {symbols[0]: []}, [symbols[0]]
+
+    midpoint = len(symbols) // 2
+    left_bars, left_rejected = _bars_isolating_rejections(symbols[:midpoint], start, end, today)
+    right_bars, right_rejected = _bars_isolating_rejections(
+        symbols[midpoint:], start, end, today
+    )
+    return {**left_bars, **right_bars}, [*left_rejected, *right_rejected]
+
+
+def daily_bars_tolerating_gaps(
+    symbols: Sequence[str], start: date, end: date, today: date
+) -> dict[str, list[Bar]]:
+    """Fetch daily bars, isolating symbols the service will not serve.
+
+    Batching a day's symbols into one request is what keeps the request count
+    inside the per-minute rate limit, but it couples them: the service rejects
+    the entire request over a single symbol it does not cover, so one thinly
+    traded issuer would cost every label for that day.
+
+    A rejected batch is therefore halved and retried until the refusal is
+    attributed to individual symbols, which are then reported as having no
+    prices — what callers already treat as unresolvable. A request rejected for
+    its own sake fails every split alike, and is raised rather than quietly
+    returning a day with no prices.
+
+    Raises:
+        SystemicRejectionError: too large a share of the symbols was refused
+            individually, which indicts the request rather than the symbols.
+        RecentSipWindowError: the window would cover the current session.
+        MissingCredentialsError: no market data credentials are configured.
+        httpx.HTTPStatusError: the service rejected the request for a reason
+            other than its symbols.
+    """
+    if not symbols:
+        return {}
+
+    collected, rejected = _bars_isolating_rejections(symbols, start, end, today)
+    if len(rejected) > len(symbols) * _SYSTEMIC_REJECTION_RATE:
+        msg = (
+            f"{len(rejected)} of {len(symbols)} symbols were refused for "
+            f"{start.isoformat()}..{end.isoformat()}, which points at the request "
+            f"rather than the symbols; first refused: {', '.join(rejected[:5])}"
+        )
+        raise SystemicRejectionError(msg)
+    return collected
 
 
 def recent_news(
