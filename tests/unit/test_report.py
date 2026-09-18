@@ -6,6 +6,7 @@ the opposite behaviour: an estimate indistinguishable from zero has to say so
 in words, and every figure needed to judge the estimate has to appear beside it.
 """
 
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -134,3 +135,29 @@ def test_the_same_evaluation_renders_identically():
     assert render_baseline_report(evaluation, GENERATED) == render_baseline_report(
         evaluation, GENERATED
     )
+
+
+def test_a_forecast_worse_than_the_base_rate_is_said_so_in_the_verdict():
+    """Discrimination and calibration fail independently.
+
+    A reader who stops at "no measurable skill" would otherwise take a forecast
+    that is actively worse than a constant as merely uninformative. A real run
+    produced an information coefficient indistinguishable from zero alongside a
+    Brier skill of -0.22.
+    """
+    evaluation = _evaluation(0.004, 0.011, 0.36)
+    worse = replace(evaluation, brier_skill=-0.2224)
+
+    rendered = render_baseline_report(worse, GENERATED)
+    verdict = rendered.split("## What this rests on")[0]
+
+    assert "less useful than forecasting the base rate" in verdict
+    assert "-0.2224" in verdict
+
+
+def test_a_positive_brier_skill_is_still_qualified_in_the_verdict():
+    better = replace(_evaluation(0.004, 0.011, 0.36), brier_skill=0.0130)
+
+    verdict = render_baseline_report(better, GENERATED).split("## What this rests on")[0]
+
+    assert "weaker claim than discrimination" in verdict
