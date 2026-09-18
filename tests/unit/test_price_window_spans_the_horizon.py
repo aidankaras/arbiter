@@ -13,7 +13,7 @@ backfill lost 675 of 675 insider events from one Friday this way, while the
 Monday beside it resolved 544 of 546.
 """
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -23,6 +23,8 @@ from arbiter.evaluation.resolution import (
     sessions_after,
     window_closes_on,
 )
+from arbiter.ingestion.edgar import is_trading_day
+from arbiter.ingestion.timestamps import SEC_TIMEZONE
 
 
 def _event(as_of: datetime, horizon: int = 5) -> ResolutionRequest:
@@ -80,17 +82,33 @@ def test_a_monday_filing_closes_the_following_tuesday():
     ],
 )
 @pytest.mark.parametrize("horizon", [5, 20])
-def test_the_fetched_window_always_reaches_the_closing_session(as_of: datetime, horizon: int):
-    """The property the calendar approximation violated, across every weekday.
+def test_the_fetched_window_holds_enough_sessions_to_measure_the_event(
+    as_of: datetime, horizon: int
+):
+    """The property the calendar approximation violated, stated independently.
 
-    Parameterised over the week because the old error was invisible on Mondays
-    and total on Fridays; a single example would have passed.
+    Measuring an event needs the entry session plus `horizon` more, all of them
+    after the filing became public. The window is checked by counting sessions
+    against the market calendar rather than by comparing it to the function that
+    produced it: an earlier version of this test asserted the window reached
+    `window_closes_on`, which is what `plan_price_windows` defines it from, so
+    it read `x >= x` and passed on the very defect it was written to catch.
     """
     event = _event(as_of, horizon)
 
     _, end = plan_price_windows([event])["MO"]
 
-    assert end >= window_closes_on(event)
+    published = as_of.astimezone(SEC_TIMEZONE).date()
+    sessions = sum(
+        1
+        for offset in range(1, (end - published).days + 1)
+        if is_trading_day(published + timedelta(days=offset))
+    )
+
+    assert sessions >= horizon + 1, (
+        f"{sessions} sessions between {published} and {end}; measuring a "
+        f"{horizon}-session horizon needs {horizon + 1}"
+    )
 
 
 def test_the_window_starts_before_the_filing_so_the_entry_session_is_inside_it():
@@ -106,6 +124,23 @@ def test_one_window_per_symbol_still_covers_every_events_horizon():
     early = _event(datetime(2026, 3, 2, 23, 0, tzinfo=UTC))
     late = _event(datetime(2026, 3, 6, 21, 11, tzinfo=UTC))
 
-    _, end = plan_price_windows([early, late])["MO"]
+    _, merged = plan_price_windows([early, late])["MO"]
+    _, alone = plan_price_windows([late])["MO"]
 
-    assert end >= window_closes_on(late)
+    assert merged >= alone
+    assert merged >= date(2026, 3, 16), "the later event's exit session"
+
+
+def test_the_window_the_calendar_approximation_produced_is_now_refused():
+    """A direct regression on the values that lost 675 of 675 events.
+
+    The replaced rule scaled the horizon by 1.5 calendar days, giving Friday
+    2026-03-06 a window ending 2026-03-14 — a Saturday, two sessions short of
+    the 2026-03-16 exit. Stating the old output as a literal keeps this honest
+    if the implementation is rewritten again.
+    """
+    event = _event(datetime(2026, 3, 6, 21, 11, tzinfo=UTC))
+
+    _, end = plan_price_windows([event])["MO"]
+
+    assert end > date(2026, 3, 14)
