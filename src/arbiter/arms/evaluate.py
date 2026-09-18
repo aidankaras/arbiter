@@ -187,7 +187,6 @@ def evaluate_baseline(
     for day in test:
         probabilities = forecast(model, day.features)
         issuer_forecasts, issuer_returns = _by_issuer(probabilities, day)
-        issuer_days += len(issuer_forecasts)
         scored_events += len(day)
 
         # Calibration, Brier skill and the base rate are pooled at the issuer-day
@@ -202,6 +201,11 @@ def evaluate_baseline(
         # adding information.
         if len(issuer_forecasts) >= _MIN_PER_DAY:
             daily[day.day] = information_coefficient(issuer_forecasts, issuer_returns)
+            # Counted only for days that contribute a coefficient. Accumulating
+            # it for every scored day would report a sample larger than the one
+            # the estimate rests on, beside a line saying how many days were
+            # excluded — inviting the reader to divide one by the other.
+            issuer_days += len(issuer_forecasts)
 
     return Evaluation(
         ic=summarise_ic(daily, observations=issuer_days),

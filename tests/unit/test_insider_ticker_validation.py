@@ -80,3 +80,17 @@ def test_the_refusal_names_the_filing_and_the_value():
     """A quarantined row must say which filing and what it contained."""
     with pytest.raises(UnpriceableIssuerError, match="0000764180-26-000102"):
         extract_insider_events(_record(), _with_ticker("N/A"))
+
+
+@pytest.mark.parametrize(("reported", "stored"), [("mo", "MO"), ("brk.b", "BRK.B")])
+def test_a_lowercase_ticker_is_stored_in_the_form_the_price_service_uses(
+    reported: str, stored: str
+):
+    """It passes validation either way; only the stored form reaches the API.
+
+    Sent as written, a lowercase symbol misses a response keyed in upper case
+    and the event resolves to nothing with no error raised anywhere.
+    """
+    events = extract_insider_events(_record(), _with_ticker(reported))
+
+    assert events[0].ticker == stored

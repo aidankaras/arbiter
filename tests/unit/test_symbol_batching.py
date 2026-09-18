@@ -21,6 +21,7 @@ from arbiter.ingestion.market import (
     SystemicRejectionError,
     daily_bars_tolerating_gaps,
     is_tradeable_symbol,
+    tradeable_symbol,
 )
 
 START = date(2026, 8, 4)
@@ -152,3 +153,20 @@ def test_no_symbols_makes_no_request(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(market, "daily_bars", unreachable)
 
     assert daily_bars_tolerating_gaps([], START, END, TODAY) == {}
+
+
+@pytest.mark.parametrize(("reported", "canonical"), [("mo", "MO"), (" brk.b ", "BRK.B")])
+def test_a_symbol_is_returned_in_the_form_the_service_uses(reported: str, canonical: str):
+    """Validation folds case, so the stored value must be folded too.
+
+    A lowercase ticker passes the check, is stored and sent as written, then
+    misses a response keyed in upper case. The event resolves to nothing with no
+    error — the same silent loss a rejected symbol causes, from a value that was
+    accepted.
+    """
+    assert tradeable_symbol(reported) == canonical
+
+
+def test_an_unusable_symbol_has_no_canonical_form():
+    assert tradeable_symbol("OAK-PA") is None
+    assert tradeable_symbol("") is None

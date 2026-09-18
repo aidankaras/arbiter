@@ -53,15 +53,33 @@ _TRADEABLE_SYMBOL = re.compile(r"^[A-Z]{1,5}(\.[A-Z]{1,2})?$")
 _PLACEHOLDER_SYMBOLS = frozenset({"NULL", "NONE", "NAN", "NA", "UNKNOWN", "ERROR", "TBD"})
 
 
-def is_tradeable_symbol(value: object) -> bool:
-    """Report whether a value is a symbol this project can price.
+def tradeable_symbol(value: object) -> str | None:
+    """Return a symbol in the form the price service uses, or `None` if unusable.
+
+    Returning the normalised symbol rather than a verdict is what keeps the
+    check and the stored value from disagreeing. Validation folds case, so a
+    lowercase ticker passes; stored and sent as written it then misses a
+    response keyed in upper case, and the event resolves to nothing with no
+    error — the same silent loss a rejected symbol would cause, from a value
+    that was accepted.
 
     Applied wherever a symbol enters the system, because one unusable symbol in
     a batched price request is rejected by the service and costs every other
     symbol in that request.
     """
     text = str(value or "").strip().upper()
-    return bool(_TRADEABLE_SYMBOL.match(text)) and text not in _PLACEHOLDER_SYMBOLS
+    if _TRADEABLE_SYMBOL.match(text) and text not in _PLACEHOLDER_SYMBOLS:
+        return text
+    return None
+
+
+def is_tradeable_symbol(value: object) -> bool:
+    """Report whether a value is a symbol this project can price.
+
+    Prefer `tradeable_symbol` anywhere the symbol is then stored or sent: this
+    answers the question without handing back the form the answer was based on.
+    """
+    return tradeable_symbol(value) is not None
 
 
 class MissingCredentialsError(RuntimeError):
