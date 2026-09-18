@@ -96,6 +96,39 @@ jobs:
               with nothing asserting a clean input reports nothing.
             - Boundaries and thresholds with no test at the boundary.
 
+            ## Design, economy, and what should be rebuilt
+
+            Correct code can still be the wrong code. Judge the design as well as
+            its behaviour.
+
+            - **Complexity that earns nothing.** An abstraction with one caller that
+              would read better inlined, a parameter no caller passes, speculative
+              generality for a case that does not exist, scaffolding for work that is
+              not scheduled. Name the specific construct and what deleting it costs.
+            - **Duplication that should be consolidated** — and, as carefully, the
+              reverse: two things that look alike, are genuinely different, and would
+              be made worse by being merged behind a shared abstraction. Say which
+              this is, with the reason.
+            - **Patched repeatedly in the same place.** Use `git log` to find modules
+              amended more than twice for the same class of defect. A recurring fix
+              in one file is a design problem wearing a bug's clothes, and the honest
+              recommendation is a rebuild of that part rather than a fourth patch.
+              Name what you would rebuild and what the new shape would be.
+            - **Cost.** This pipeline runs against a hard budget and a per-minute rate
+              limit, and its dominant cost is requests, not compute. Look for
+              redundant fetches, work repeated per item that could be done per batch
+              or cached, and anything re-requested across runs that could be derived
+              from what is already stored.
+            - **Latency.** Ingesting one trading day is the binding constraint on how
+              much history exists to measure. Identify what actually dominates it and
+              whether the ordering of work, the concurrency, or the caching could be
+              changed without weakening a correctness property. Do not propose
+              speed at the cost of point-in-time integrity.
+            - **Simpler shapes.** Where a clearer structure exists that preserves
+              behaviour, describe it concretely. Where the current shape is already
+              the honest one, say so — explicitness is a stated standard here, and
+              brevity that hides a reason is not an improvement.
+
             ## Documentation and configuration
 
             - **README.md and docs/**: every present-tense claim must correspond to
@@ -111,6 +144,32 @@ jobs:
               than the job needs, no secret reachable by untrusted input.
             - **Comments and docstrings**: state contracts, units and failure modes
               rather than restating the signature; explain why rather than what.
+
+            ## Prose, and who each section is written for
+
+            This project publishes a measured claim, so its writing has two audiences
+            and they need different things from the same document.
+
+            - **Orienting sections** — a README's opening, the introduction to
+              `docs/methodology.md`, the framing paragraph of any report — should be
+              readable by a scientifically literate person who does not work in
+              finance or machine learning. Every term of art defined at first use or
+              avoided; the question and why it is worth asking legible before any
+              machinery appears. Test each opening against: would a careful reader in
+              another field follow this, and know what is being claimed?
+            - **Technical sections** — method, implementation, results — are written
+              for a peer who will check the work. Precision over accessibility here:
+              state the estimator, the sample, the horizon, the benchmark, the
+              uncertainty. A reader must be able to find the exact arithmetic, and to
+              disagree with it.
+            - **The transition must be visible.** Flag any section that is neither:
+              too technical to orient a newcomer and too loose for a specialist to
+              verify, which is the register most documents drift into.
+            - **Every number carries its sample and its uncertainty**, wherever it
+              appears. A figure without the observations behind it is not a result.
+              Report any claim stated without them.
+            - **No narration of process.** Documentation describes the system, not how
+              it came to exist, and addresses no individual.
 
             ## Output
 
