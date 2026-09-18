@@ -148,3 +148,21 @@ def test_too_few_days_to_score_is_refused_rather_than_reported():
 def test_an_evaluation_needs_days_on_both_sides_of_the_split():
     with pytest.raises(InsufficientObservationsError):
         evaluate_baseline([_day(DAYS[0], informative=True)])
+
+
+def test_the_reported_sample_counts_only_days_that_contributed_a_coefficient():
+    """The report prints days-excluded beside observations, inviting a division.
+
+    A day too thin to rank contributes no coefficient, so counting its issuers
+    toward the reported sample describes an estimate resting on more data than
+    it does.
+    """
+    thin = _day(date(2026, 6, 15), informative=True, issuers=4)
+    days = [_day(day, informative=True) for day in DAYS] + [thin]
+
+    evaluation = evaluate_baseline(days)
+
+    assert thin.day not in evaluation.daily_ic
+    assert evaluation.test_issuer_days == sum(
+        len(set(by_day.issuers)) for by_day in days if by_day.day in evaluation.daily_ic
+    )

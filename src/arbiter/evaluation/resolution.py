@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict
 
 from arbiter.evaluation.labels import abnormal_return
 from arbiter.ingestion.edgar import is_trading_day
-from arbiter.ingestion.market import Bar, is_tradeable_symbol
+from arbiter.ingestion.market import Bar, tradeable_symbol
 from arbiter.ingestion.timestamps import SEC_TIMEZONE
 
 #: Sessions held per domain. Insider information resolves within a week; the
@@ -247,7 +247,8 @@ def with_tickers(
             )
             continue
 
-        if not is_tradeable_symbol(ticker):
+        canonical = tradeable_symbol(ticker)
+        if canonical is None:
             # A preferred issue or unit, which this study does not cover, and
             # which the price service rejects — taking every other symbol in the
             # same batched request down with it.
@@ -259,7 +260,7 @@ def with_tickers(
             )
             continue
 
-        priced.append({**row, "ticker": ticker})
+        priced.append({**row, "ticker": canonical})
 
     return priced, unpriceable
 

@@ -20,7 +20,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from arbiter.ingestion.edgar import FilingRecord
-from arbiter.ingestion.market import is_tradeable_symbol
+from arbiter.ingestion.market import tradeable_symbol
 
 OPEN_MARKET_CODES = frozenset({"P", "S"})
 
@@ -198,14 +198,15 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
             msg = f"Form 4 table is missing {missing}; the upstream format changed"
             raise KeyError(msg)
 
-        ticker = str(row["Ticker"]).strip()
-        if not is_tradeable_symbol(ticker):
+        reported = str(row["Ticker"]).strip()
+        ticker = tradeable_symbol(reported)
+        if ticker is None:
             # Validated against what a symbol looks like rather than against a
             # list of placeholder spellings. The filing client renders a missing
             # ticker variously as "N/A", "None", or empty, and a denylist loses
             # to whichever spelling it has not met yet.
             msg = (
-                f"Ticker {ticker!r} in {record.accession_no} is not a symbol; "
+                f"Ticker {reported!r} in {record.accession_no} is not a symbol; "
                 "the event cannot be priced"
             )
             raise UnpriceableIssuerError(msg)
