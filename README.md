@@ -30,18 +30,48 @@ decision provenance and per-decision cost accounting.
 git clone https://github.com/aidankaras/arbiter && cd arbiter
 uv sync --all-extras
 cp .env.example .env          # set SEC_USER_AGENT: "identifier your@email"
-uv run arbiter ingest 2026-09-11
+uv run arbiter ingest 2026-08-10
 ```
 
 ```
-insider: 47
-redflag: 10
+insider: 755
+redflag: 46
+rejected: 0
+unpriceable: 34
 ```
 
 That command fetches every Form 4 and 8-K accepted on the given day, extracts the
 qualifying events, and writes them to `data/events/{domain}/{date}.parquet`.
 Re-running a date replaces that date's partition, so a failed run is repeated
 rather than repaired.
+
+The last two counts are different facts and are recorded separately. `rejected`
+is filings that could not be parsed, which is a defect to investigate; a day
+where too many fail is refused outright rather than recorded, on the reasoning
+that a format change has broken it. `unpriceable` is filings parsed correctly
+whose issuer has no listed common stock — insiders at companies with only
+registered debt file Form 4 like anyone else — which is an ordinary property of
+the population and is excluded from that share.
+
+Once an event's outcome window has closed, the same day is labeled:
+
+```bash
+uv run arbiter resolve 2026-08-10 insider
+uv run arbiter resolve 2026-08-10 redflag
+```
+
+```
+labels-insider: 751
+labels-redflag: 40
+```
+
+Labeling lags ingestion. The horizon is five sessions for insider events and
+twenty for red flags, and the consolidated tape will not serve a window ending
+on the current session — so a day becomes measurable only after its window has
+closed, and a day asked for too early yields nothing rather than a partial
+measurement. Issuers with no listed common stock are recorded under
+`unpriceable/` beside the labels, so a thin day stays distinguishable from a day
+whose filers were unlistable.
 
 Market data additionally requires `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`;
 EDGAR ingestion needs no credentials beyond the contact string the SEC requires.

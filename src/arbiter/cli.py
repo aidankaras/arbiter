@@ -6,6 +6,7 @@ function that is independently testable without the CLI.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -15,7 +16,10 @@ from pydantic import ValidationError
 
 from arbiter import __version__
 from arbiter.config import Settings, get_settings
+from arbiter.evaluation.resolution import HORIZONS, resolve_stored_day
+from arbiter.ingestion.market import Bar, current_session_date, daily_bars_tolerating_gaps
 from arbiter.ingestion.pipeline import ingest_day
+from arbiter.ingestion.sectors import benchmark_for_issuer, issuer_ticker
 
 app = typer.Typer(
     name="arbiter",
@@ -76,3 +80,44 @@ def ingest(
     counts = ingest_day(date.fromisoformat(day), Path(root), Decimal(min_value_usd))
     for domain, count in counts.items():
         typer.echo(f"{domain}: {count}")
+
+
+@app.command()
+def resolve(
+    day: str,
+    domain: str,
+    root: str = "data/events",
+) -> None:
+    """Label one stored day of a domain, once its outcome window has closed.
+
+    Runs a day at a time against the consolidated tape, which will not serve a
+    window ending on the current session — so the most recent day that can be
+    labeled is always at least one session behind ingestion, and a day whose
+    window has not closed yields nothing rather than a partial measurement.
+
+    Events whose issuer cannot be priced are recorded under `unpriceable/`
+    beside the labels rather than dropped.
+    """
+    if domain not in HORIZONS:
+        # Caught here because the next step reads that domain's partition, and a
+        # misspelled domain would surface as "the day was never processed" —
+        # pointing at the ingestion run rather than at the typo.
+        known = ", ".join(sorted(HORIZONS))
+        typer.echo(f"unknown domain '{domain}'; expected one of: {known}", err=True)
+        raise typer.Exit(code=2)
+
+    today = current_session_date()
+
+    def fetch(symbols: Sequence[str], start: date, end: date) -> dict[str, list[Bar]]:
+        return daily_bars_tolerating_gaps(list(symbols), start, end, today)
+
+    written = resolve_stored_day(
+        day=date.fromisoformat(day),
+        domain=domain,
+        root=Path(root),
+        fetch_bars=fetch,
+        benchmark_for=benchmark_for_issuer,
+        today=today,
+        ticker_for=issuer_ticker,
+    )
+    typer.echo(f"labels-{domain}: {written}")
