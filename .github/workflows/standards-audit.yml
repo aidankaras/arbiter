@@ -192,8 +192,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if git diff --quiet -- reports/standards-audit.md; then
-            echo "No change to the audit report; nothing to propose."
+          # `git status --porcelain` rather than `git diff`: the report is
+          # untracked until the first run commits it, and `git diff` does not
+          # see untracked files. Checked with `git diff` this step reported "no
+          # change" whatever the audit produced — a check that could not fail,
+          # in the workflow written to find checks that cannot fail.
+          if [ -z "$(git status --porcelain -- reports/standards-audit.md)" ]; then
+            echo "The audit wrote no report; nothing to propose."
             exit 0
           fi
 
