@@ -429,6 +429,32 @@ def _series_or_raise(bars: list[Bar], horizon: int, name: str) -> list[Bar]:
     return bars
 
 
+def _paired_sessions(
+    issuer_bars: list[Bar], benchmark_bars: list[Bar]
+) -> tuple[list[Bar], list[Bar]]:
+    """Return the two series restricted to sessions both actually traded.
+
+    The two are otherwise indexed by position, which silently assumes they hold
+    the same sessions. They do not. An issuer halted mid-window has fewer bars
+    than its benchmark, so the same index reaches a later calendar date in one
+    series than the other, and the abnormal return subtracts a benchmark move
+    measured over a different span from the issuer's.
+
+    That error is not noise: halts cluster on exactly the bad news these events
+    are about, so it would bias the measurement toward the outcomes being
+    studied rather than scatter it. Pairing by date makes the horizon count
+    sessions the issuer could actually have traded, and holds the benchmark to
+    the same calendar window.
+    """
+    benchmark_by_date = {bar.timestamp.date(): bar for bar in benchmark_bars}
+    paired = [
+        (bar, benchmark_by_date[bar.timestamp.date()])
+        for bar in issuer_bars
+        if bar.timestamp.date() in benchmark_by_date
+    ]
+    return [issuer for issuer, _ in paired], [benchmark for _, benchmark in paired]
+
+
 def resolve_label(
     issuer_bars: list[Bar],
     benchmark_bars: list[Bar],
@@ -446,8 +472,15 @@ def resolve_label(
         UnresolvableEventError: either series is missing or too short.
         InsufficientPriceDataError: a price within the window is unusable.
     """
-    issuer = _series_or_raise(issuer_bars, horizon, "issuer")
-    benchmark = _series_or_raise(benchmark_bars, horizon, "benchmark")
+    # Each raw series is checked before pairing so a failure names the side that
+    # caused it. Checking only the paired result would report a benchmark that
+    # was never fetched as a problem with the issuer.
+    _series_or_raise(issuer_bars, horizon, "issuer")
+    _series_or_raise(benchmark_bars, horizon, "benchmark")
+
+    paired_issuer, paired_benchmark = _paired_sessions(issuer_bars, benchmark_bars)
+    issuer = _series_or_raise(paired_issuer, horizon, "issuer and benchmark overlapping")
+    benchmark = paired_benchmark
 
     entry, exit_ = issuer[0], issuer[horizon]
     benchmark_entry, benchmark_exit = benchmark[0], benchmark[horizon]
