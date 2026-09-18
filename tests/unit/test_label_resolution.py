@@ -28,6 +28,18 @@ def _bars(closes: list[str], opens: list[str] | None = None) -> list[Bar]:
     ]
 
 
+def _bar(day: int, price: str) -> Bar:
+    """One bar on a named August 2026 session, so gaps can be expressed."""
+    return Bar(
+        timestamp=datetime(2026, 8, day, 4, 0, tzinfo=UTC),
+        open=Decimal(price),
+        high=Decimal(price),
+        low=Decimal(price),
+        close=Decimal(price),
+        volume=Decimal("1000"),
+    )
+
+
 def test_the_horizons_differ_by_domain():
     """Insider signal resolves in a week; red-flag drift runs for a month."""
     assert HORIZONS["insider"] == 5
@@ -121,3 +133,44 @@ def test_the_label_records_its_entry_and_exit_sessions():
 
     assert label.entry_session == date(2026, 8, 3)
     assert label.exit_session == date(2026, 8, 8)
+
+
+def test_a_halted_issuer_is_measured_against_the_same_sessions_it_traded():
+    """The two series are otherwise indexed by position, which assumes they match.
+
+    An issuer halted mid-window holds fewer bars than its benchmark, so the same
+    index reaches a later date in one series than the other and the abnormal
+    return subtracts a benchmark move measured over a different span. Halts
+    cluster on the bad news these events are about, so the error would bias the
+    measurement rather than scatter it.
+    """
+    # The issuer misses 6 and 7 August; the benchmark trades every session.
+    issuer = [
+        _bar(day, price)
+        for day, price in [(3, "100"), (4, "101"), (5, "102"), (10, "103"), (11, "110")]
+    ]
+    benchmark = [_bar(day, "50") for day in (3, 4, 5, 6, 7, 10, 11)]
+
+    label = resolve_label(
+        issuer_bars=issuer,
+        benchmark_bars=benchmark,
+        benchmark_symbol="XLP",
+        horizon=4,
+    )
+
+    assert label.entry_session == date(2026, 8, 3)
+    assert label.exit_session == date(2026, 8, 11), "the issuer's fifth traded session"
+
+
+def test_an_issuer_and_benchmark_sharing_too_few_sessions_is_unresolvable():
+    """Long enough separately, too little overlap to measure the horizon."""
+    issuer = [_bar(day, "100") for day in (3, 4, 5, 6, 7, 10)]
+    benchmark = [_bar(day, "50") for day in (17, 18, 19, 20, 21, 24)]
+
+    with pytest.raises(UnresolvableEventError, match="overlapping"):
+        resolve_label(
+            issuer_bars=issuer,
+            benchmark_bars=benchmark,
+            benchmark_symbol="XLP",
+            horizon=5,
+        )
