@@ -58,13 +58,47 @@ _MARKET_HOLIDAYS = frozenset(
 )
 
 
+#: The years the holiday table actually covers, derived from the table so the
+#: two cannot drift apart.
+_CALENDAR_YEARS = range(
+    min(holiday.year for holiday in _MARKET_HOLIDAYS),
+    max(holiday.year for holiday in _MARKET_HOLIDAYS) + 1,
+)
+
+
+class UncoveredCalendarError(LookupError):
+    """Raised when a date falls outside the years the holiday table lists.
+
+    Answering anyway would mean reporting every weekday holiday in that year as
+    a trading day: Christmas 2024 fell on a Wednesday, and a table listing only
+    2026 and 2027 would call it open.
+
+    That error is the worst kind this project has — it varies with the calendar,
+    so it would not thin a sample evenly but shift the session index of every
+    event whose window spans the misclassified day, and only in some years.
+    Refusing is the honest answer until the table is extended.
+    """
+
+
 def is_trading_day(day: date) -> bool:
     """Report whether the US equity market was open on a calendar day.
 
     Public because a backfill decides which days are worth fetching before it
     reaches EDGAR at all, and duplicating the holiday calendar to do so would
     let the two drift apart.
+
+    Raises:
+        UncoveredCalendarError: the date falls outside the years the holiday
+            table lists, where a weekday closure would be reported as open.
     """
+    if day.year not in _CALENDAR_YEARS:
+        msg = (
+            f"{day.isoformat()} falls outside the holiday calendar, which covers "
+            f"{_CALENDAR_YEARS.start}-{_CALENDAR_YEARS.stop - 1}. Extend "
+            "_MARKET_HOLIDAYS rather than treating an unlisted year as fully open: "
+            "every weekday holiday in it would be counted as a trading session."
+        )
+        raise UncoveredCalendarError(msg)
     return day.weekday() < 5 and day not in _MARKET_HOLIDAYS
 
 
