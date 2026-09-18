@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from arbiter.events.insider import extract_insider_events, is_candidate
+from arbiter.events.insider import (
+    UnpriceableIssuerError,
+    extract_insider_events,
+    is_candidate,
+)
 from arbiter.ingestion.edgar import FilingRecord
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "form4_open_market.json"
@@ -89,8 +93,12 @@ def test_a_blank_share_count_raises_where_a_value_is_always_reported():
 
 
 def test_a_missing_ticker_raises_rather_than_becoming_a_string():
-    """It previously became the string 'None' and entered the studied population."""
-    with pytest.raises(ValueError, match="Ticker"):
+    """It previously became the string 'None' and entered the studied population.
+
+    Raised as an unpriceable issuer rather than a parse failure: the row is
+    well formed, and the filer simply has no listed common stock.
+    """
+    with pytest.raises(UnpriceableIssuerError, match="Ticker"):
         extract_insider_events(_record(), _Form4(_payload(Ticker=None)))
 
 

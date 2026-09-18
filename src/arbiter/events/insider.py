@@ -88,6 +88,22 @@ def is_candidate(event: InsiderEvent, min_value_usd: Decimal) -> bool:
     return event.value_usd >= min_value_usd
 
 
+class UnpriceableIssuerError(Exception):
+    """Raised when a filing's issuer has no security this project can price.
+
+    Deliberately not a parse failure. The filing was read correctly and the
+    filer is real — it simply has no listed common stock, which is an ordinary
+    property of the filing population rather than evidence that anything is
+    broken. Insiders at companies with only registered debt, and at issuers
+    between registration and listing, file Form 4 like anyone else.
+
+    The distinction matters because ingestion aborts a day whose filings mostly
+    fail to parse, on the reasoning that a format or client change has broken
+    it. Counting unlistable issuers toward that share would let an unremarkable
+    day trip a guard meant for breakage.
+    """
+
+
 _BLANK = frozenset({"", "nan", "none", "null", "<na>", "nat"})
 
 
@@ -187,14 +203,12 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
             # Validated against what a symbol looks like rather than against a
             # list of placeholder spellings. The filing client renders a missing
             # ticker variously as "N/A", "None", or empty, and a denylist loses
-            # to whichever spelling it has not met yet. Without a usable symbol
-            # the event can never be priced, and admitting it would surface later
-            # as an unresolvable event rather than as the parsing gap it is.
+            # to whichever spelling it has not met yet.
             msg = (
                 f"Ticker {ticker!r} in {record.accession_no} is not a symbol; "
                 "the event cannot be priced"
             )
-            raise ValueError(msg)
+            raise UnpriceableIssuerError(msg)
 
         events.append(
             InsiderEvent(

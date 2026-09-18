@@ -112,9 +112,9 @@ They are never assigned a zero return.
 
 ### Exclusions from the measured population
 
-Three classes of event carry no label, and each is recorded per day beside the
-labels rather than dropped, so that a thin day stays distinguishable from a day
-whose issuers were unlistable:
+Three classes of event carry no label. Each is recorded per day under
+`unpriceable/` rather than dropped, so that a thin day stays distinguishable
+from a day whose issuers were unlistable:
 
 - **No listed security.** A current report may be filed by a trust, a shell, or
   an issuer whose securities are not exchange-listed. There is no price series
@@ -129,6 +129,14 @@ whose issuers were unlistable:
 These exclusions are properties of the issuer, not of any arm's forecast, and
 they are applied before any arm sees the event. All four arms therefore measure
 the same population.
+
+They are applied at different stages, because the two domains identify their
+issuer differently. A Form 4 reports its issuer's ticker, so an unlistable one
+is caught at extraction and never becomes an event. An 8-K reports only a CIK,
+so the ticker is looked up at labeling time and the exclusion happens there.
+Both are recorded the same way, and neither counts toward the parse-failure rate
+that aborts a day: an issuer without listed stock is an ordinary filer, not
+evidence that the pipeline has broken.
 
 One consequence deserves stating plainly: excluding unlistable and non-common
 issuers removes the least liquid tail of filers. Reported results describe

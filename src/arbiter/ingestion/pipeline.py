@@ -16,10 +16,15 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from arbiter.events.insider import InsiderEvent, extract_insider_events, is_candidate
+from arbiter.events.insider import (
+    InsiderEvent,
+    UnpriceableIssuerError,
+    extract_insider_events,
+    is_candidate,
+)
 from arbiter.events.redflags import RedFlagEvent, extract_redflag_event
 from arbiter.ingestion.edgar import filings_with_objects
-from arbiter.ingestion.store import write_events
+from arbiter.ingestion.store import write_events, write_unpriceable
 
 INSIDER_FORM = "4"
 REDFLAG_FORM = "8-K"
@@ -80,6 +85,7 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
     """
     insider_events: list[InsiderEvent] = []
     insider_rejected: list[dict[str, str]] = []
+    insider_unpriceable: list[dict[str, str]] = []
     insider_filings = filings_with_objects(INSIDER_FORM, day)
     for record, filing in insider_filings:
         # One malformed filing must not cost the other nine hundred. The failure
@@ -89,6 +95,14 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
             for event in extract_insider_events(record, filing.obj()):
                 if is_candidate(event, min_value_usd):
                     insider_events.append(event)
+        except UnpriceableIssuerError as exc:
+            # Recorded apart from parse failures and excluded from the systemic
+            # share below: an insider at a company with no listed common stock
+            # files like any other, and that is a property of the population
+            # rather than a sign the pipeline is broken.
+            insider_unpriceable.append(
+                {"accession_no": record.accession_no, "reason": str(exc)}
+            )
         except _PARSE_FAILURES as exc:
             insider_rejected.append({"accession_no": record.accession_no, "error": str(exc)})
 
@@ -104,14 +118,22 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
         if event is not None:
             redflag_events.append(event)
 
-    _quarantine(insider_rejected, root, "insider", day, len(insider_filings))
+    # Unlistable issuers are subtracted from what was attempted, not just from
+    # what was rejected. Leaving them in the denominator would understate the
+    # share of genuinely unparseable filings and mask a real format break on a
+    # day that happened to carry many of them.
+    _quarantine(
+        insider_rejected, root, "insider", day, len(insider_filings) - len(insider_unpriceable)
+    )
     _quarantine(redflag_rejected, root, "redflag", day, len(redflag_filings))
 
     write_events(insider_events, root, "insider", day)
     write_events(redflag_events, root, "redflag", day)
+    write_unpriceable(insider_unpriceable, root, "insider", day)
 
     return {
         "insider": len(insider_events),
         "redflag": len(redflag_events),
         "rejected": len(insider_rejected) + len(redflag_rejected),
+        "unpriceable": len(insider_unpriceable),
     }

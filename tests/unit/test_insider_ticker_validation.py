@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from arbiter.events.insider import extract_insider_events
+from arbiter.events.insider import UnpriceableIssuerError, extract_insider_events
 from arbiter.ingestion.edgar import FilingRecord
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "form4_open_market.json"
@@ -52,12 +52,12 @@ def _with_ticker(value: object) -> _Form4:
 )
 def test_placeholders_are_refused_however_they_are_spelled(placeholder: str):
     """The 400 that killed a day's labels came from 'N/A' reaching the price API."""
-    with pytest.raises(ValueError, match="not a symbol"):
+    with pytest.raises(UnpriceableIssuerError, match="not a symbol"):
         extract_insider_events(_record(), _with_ticker(placeholder))
 
 
 def test_a_missing_ticker_is_refused():
-    with pytest.raises(ValueError, match="not a symbol"):
+    with pytest.raises(UnpriceableIssuerError, match="not a symbol"):
         extract_insider_events(_record(), _with_ticker(None))
 
 
@@ -78,5 +78,5 @@ def test_surrounding_whitespace_is_trimmed_rather_than_refused():
 
 def test_the_refusal_names_the_filing_and_the_value():
     """A quarantined row must say which filing and what it contained."""
-    with pytest.raises(ValueError, match="0000764180-26-000102"):
+    with pytest.raises(UnpriceableIssuerError, match="0000764180-26-000102"):
         extract_insider_events(_record(), _with_ticker("N/A"))
