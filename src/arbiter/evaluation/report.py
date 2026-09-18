@@ -94,6 +94,10 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         f"| Fitted on | {len(evaluation.train_days)} days, "
         f"{evaluation.train_events:,} events |",
         f"| Scored on | {len(evaluation.test_days)} days, {evaluation.test_events:,} events |",
+        # These two counts differ whenever a day carried too few distinct
+        # issuers to rank. Reporting only one of them would leave the day count
+        # in the verdict contradicting the day count in this table.
+        f"| Days contributing a rank correlation | {ic.days} of {len(evaluation.test_days)} |",
         f"| Scored observations | {evaluation.test_issuer_days:,} issuer-days |",
         f"| Fitting period | {evaluation.train_days[0]} to {evaluation.train_days[-1]} |",
         f"| Scoring period | {evaluation.test_days[0]} to {evaluation.test_days[-1]} |",
