@@ -9,9 +9,12 @@ whose gaps nobody can account for.
 
 from datetime import date
 
+import httpx
 import pytest
 
+from arbiter.ingestion import backfill as backfill_module
 from arbiter.ingestion.backfill import SystemicBackfillError, backfill
+from arbiter.ingestion.market import MissingCredentialsError
 
 DAYS = [date(2026, 8, day) for day in (3, 4, 5, 6, 7)]
 
@@ -136,3 +139,82 @@ def test_no_days_is_a_run_that_does_nothing_rather_than_an_error():
 
     assert report.attempted == 0
     assert report.events == 0
+
+
+def test_a_dropped_connection_is_retried_rather_than_losing_the_day(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A transient fault says nothing about the day it interrupted.
+
+    Without a retry it both loses that day permanently — the resume rule sees
+    stored events and skips it — and counts toward the share that stops the run.
+    A real run aborted at 3 of 10 days on read timeouts this way.
+    """
+    monkeypatch.setattr(backfill_module, "_RETRY_BACKOFF_SECONDS", 0)
+    attempts: list[date] = []
+
+    def flaky(day: date) -> dict[str, int]:
+        attempts.append(day)
+        if len(attempts) < 3:
+            raise httpx.ReadTimeout("the read operation timed out")
+        return _counts()
+
+    report = backfill(
+        [DAYS[0]], ingest=flaky, resolve=lambda day: 9, is_stored=lambda day: False
+    )
+
+    assert report.completed == [DAYS[0]]
+    assert len(attempts) == 3
+
+
+def test_a_day_that_keeps_timing_out_is_eventually_recorded_as_failed(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(backfill_module, "_RETRY_BACKOFF_SECONDS", 0)
+
+    def always_timing_out(day: date) -> dict[str, int]:
+        raise httpx.ReadTimeout("the read operation timed out")
+
+    report = backfill(
+        [DAYS[0]],
+        ingest=always_timing_out,
+        resolve=lambda day: 9,
+        is_stored=lambda day: False,
+    )
+
+    assert "ReadTimeout" in report.failed[DAYS[0]]
+
+
+def test_a_parse_failure_is_not_retried(monkeypatch: pytest.MonkeyPatch):
+    """It would fail identically, tripling the cost of every broken day."""
+    monkeypatch.setattr(backfill_module, "_RETRY_BACKOFF_SECONDS", 0)
+    attempts: list[date] = []
+
+    def unparseable(day: date) -> dict[str, int]:
+        attempts.append(day)
+        raise ValueError("the filing format changed")
+
+    backfill([DAYS[0]], ingest=unparseable, resolve=lambda day: 9, is_stored=lambda day: False)
+
+    assert len(attempts) == 1
+
+
+def test_a_missing_credential_stops_the_run_immediately(monkeypatch: pytest.MonkeyPatch):
+    """It will fail every remaining day identically.
+
+    Absorbing it into a per-day rate spends a quarter of a multi-hour run
+    discovering something the first day already proved.
+    """
+    monkeypatch.setattr(backfill_module, "_RETRY_BACKOFF_SECONDS", 0)
+    attempted: list[date] = []
+
+    def no_credentials(day: date) -> dict[str, int]:
+        attempted.append(day)
+        raise MissingCredentialsError("ALPACA_API_KEY is required")
+
+    with pytest.raises(MissingCredentialsError):
+        backfill(
+            DAYS, ingest=no_credentials, resolve=lambda day: 9, is_stored=lambda day: False
+        )
+
+    assert attempted == [DAYS[0]], "the run stops on the first day, not the fourth"

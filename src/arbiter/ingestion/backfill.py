@@ -33,8 +33,55 @@ from arbiter.ingestion.edgar import is_trading_day
 _SYSTEMIC_FAILURE_RATE = 0.25
 
 
+#: Attempts per day before a transient failure is recorded as a real one. A
+#: dropped connection partway through a multi-hour run says nothing about the
+#: day it interrupted, and without this it both loses that day permanently and
+#: counts toward the share that stops the run.
+_ATTEMPTS_PER_DAY = 3
+
+#: Seconds to wait between attempts, doubling. Long enough for a transient
+#: network fault to clear, short against a day that costs minutes anyway.
+_RETRY_BACKOFF_SECONDS = 5
+
+
 class SystemicBackfillError(RuntimeError):
     """Raised when so many days fail that the run is not worth continuing."""
+
+
+def _run_level_faults() -> tuple[type[BaseException], ...]:
+    """Return the failures that indict the run rather than one day.
+
+    Imported lazily because they live in modules that reach the network, and
+    day selection must stay importable without them.
+    """
+    from arbiter.evaluation.resolution import MissingBenchmarkSeriesError
+    from arbiter.ingestion.market import MissingCredentialsError, SystemicRejectionError
+
+    return (MissingCredentialsError, SystemicRejectionError, MissingBenchmarkSeriesError)
+
+
+_RUN_LEVEL_FAULTS = _run_level_faults()
+
+
+def _with_retries[T](step: Callable[[date], T], day: date) -> T:
+    """Run one day's work, retrying a transient transport failure.
+
+    Only transport faults are retried. A day that fails to parse will fail
+    identically on a second attempt, and retrying it would triple the cost of
+    every genuinely broken day for nothing.
+    """
+    import time
+
+    import httpx
+
+    for attempt in range(1, _ATTEMPTS_PER_DAY + 1):
+        try:
+            return step(day)
+        except httpx.TransportError:
+            if attempt == _ATTEMPTS_PER_DAY:
+                raise
+            time.sleep(_RETRY_BACKOFF_SECONDS * 2 ** (attempt - 1))
+    raise AssertionError("unreachable: the loop either returns or raises")
 
 
 def sampled_trading_days(start: date, end: date, every: int = 1) -> list[date]:
@@ -109,10 +156,15 @@ def backfill(
             continue
 
         try:
-            counts = ingest(day)
+            counts = _with_retries(ingest, day)
             report.events += counts.get("insider", 0) + counts.get("redflag", 0)
-            report.labels += resolve(day)
+            report.labels += _with_retries(resolve, day)
             report.completed.append(day)
+        except _RUN_LEVEL_FAULTS:
+            # Not a property of this day. A missing credential or a refused feed
+            # will fail every remaining day identically, and absorbing it into a
+            # per-day rate would spend a quarter of the run discovering that.
+            raise
         except Exception as exc:
             # One unreadable day must not cost the hours already spent. The
             # cause is kept per day so a gap in the dataset can always be
