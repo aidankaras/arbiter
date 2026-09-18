@@ -20,10 +20,10 @@ build/
 coverage.xml
 htmlcov/
 
-# Data — raw filings and price caches are large and reproducible from source
-data/raw/
-data/cache/
-data/interim/
+# Data — filings, price caches, and the event store are large and reproducible
+# from their sources by `arbiter backfill`, so the dataset is rebuilt rather
+# than versioned. Results computed from it belong in reports/, which is tracked.
+data/
 *.sqlite
 *.db
 pgdata/

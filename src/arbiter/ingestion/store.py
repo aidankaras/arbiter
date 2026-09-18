@@ -159,6 +159,16 @@ def write_unpriceable(
     return path
 
 
+def partition_exists(root: Path, domain: str, day: date) -> bool:
+    """Report whether a day has been processed for a domain.
+
+    Distinct from whether it holds events: an empty partition is written for a
+    day that was processed and yielded nothing, and that is exactly the case
+    this must report as done so a resumed run does not fetch it again.
+    """
+    return _partition(root, domain, day).exists()
+
+
 def read_events(root: Path, domain: str, day: date) -> list[dict[str, Any]]:
     """Return one day's stored events.
 

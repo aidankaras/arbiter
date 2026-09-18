@@ -57,8 +57,13 @@ _MARKET_HOLIDAYS = frozenset(
 )
 
 
-def _is_trading_day(day: date) -> bool:
-    """Report whether the US equity market was open on a calendar day."""
+def is_trading_day(day: date) -> bool:
+    """Report whether the US equity market was open on a calendar day.
+
+    Public because a backfill decides which days are worth fetching before it
+    reaches EDGAR at all, and duplicating the holiday calendar to do so would
+    let the two drift apart.
+    """
     return day.weekday() < 5 and day not in _MARKET_HOLIDAYS
 
 
@@ -109,7 +114,7 @@ def filings_with_objects(form: str, on: date) -> list[tuple[FilingRecord, Any]]:
         # read are indistinguishable here, and treating both as empty would
         # record a failed fetch as a complete, permanently empty day. Only a
         # non-trading day is accepted as legitimately empty.
-        if _is_trading_day(on):
+        if is_trading_day(on):
             msg = (
                 f"EDGAR returned no {form} index for {on.isoformat()}, which is a "
                 "trading day; treat this as a failed fetch and retry rather than "
