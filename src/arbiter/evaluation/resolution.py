@@ -22,7 +22,9 @@ from typing import Any, cast
 from pydantic import BaseModel, ConfigDict
 
 from arbiter.evaluation.labels import abnormal_return
+from arbiter.ingestion.edgar import is_trading_day
 from arbiter.ingestion.market import Bar, is_tradeable_symbol
+from arbiter.ingestion.timestamps import SEC_TIMEZONE
 
 #: Sessions held per domain. Insider information resolves within a week; the
 #: drift after an auditor change or restatement runs for about a month, so a
@@ -30,11 +32,11 @@ from arbiter.ingestion.market import Bar, is_tradeable_symbol
 HORIZONS = {"insider": 5, "redflag": 20}
 
 
-#: Calendar days per trading session, used only to decide whether a window has
-#: plausibly closed. Sessions come from the bars themselves; this is a coarse
-#: filter that avoids fetching prices for events that obviously cannot be
-#: measured yet, and it errs toward waiting.
-_CALENDAR_DAYS_PER_SESSION = 1.5
+#: Extra sessions fetched past the closing session. The exit session is chosen
+#: from the bars themselves, so the window only has to be long enough to contain
+#: it; this covers closures the holiday calendar does not list, and a window
+#: slightly too long costs nothing but a few unused bars.
+_WINDOW_SLACK_SESSIONS = 3
 
 #: Sessions of price history fetched before the first event, so the entry
 #: session that follows a filing is always inside the window.
@@ -63,15 +65,40 @@ def entry_sessions(bars: list[Bar], as_of: datetime) -> list[Bar]:
     return [bar for bar in bars if bar.timestamp > as_of]
 
 
-def window_closes_on(event: ResolutionRequest) -> date:
-    """Estimate the calendar day by which an event's horizon has passed.
+def sessions_after(day: date, sessions: int) -> date:
+    """Return the calendar date a given number of trading sessions after `day`.
 
-    Deliberately approximate and deliberately late: sessions are not calendar
-    days, and an event judged resolvable too early would simply fail on short
-    price history, wasting a request. Judging it late costs only a day.
+    Counted against the market calendar rather than scaled from calendar days.
+    A fixed ratio of days per session is wrong by an amount that depends on
+    which weekday the count starts from — five sessions after a Monday is eight
+    calendar days, after a Friday it is ten — and that error falls entirely on
+    filings late in the week.
     """
-    span = int(event.horizon * _CALENDAR_DAYS_PER_SESSION) + 1
-    return event.as_of.date() + timedelta(days=span)
+    remaining = sessions
+    current = day
+    while remaining > 0:
+        current += timedelta(days=1)
+        if is_trading_day(current):
+            remaining -= 1
+    return current
+
+
+def window_closes_on(event: ResolutionRequest) -> date:
+    """Return the session on which an event's horizon closes.
+
+    Counted against the market calendar rather than scaled from calendar days.
+    A fixed ratio of days per session is wrong by an amount that depends on the
+    weekday the filing landed on — five sessions after a Monday is eight
+    calendar days, after a Friday it is ten — so an approximation cuts the
+    window short for filings late in the week and leaves those events with no
+    price history covering their exit. That removes whole days from the
+    measured population rather than degrading evenly across them.
+
+    The entry session is the first the market holds after the filing became
+    public, matching how the exit session is later chosen from the bars.
+    """
+    entry = sessions_after(event.as_of.astimezone(SEC_TIMEZONE).date(), 1)
+    return sessions_after(entry, event.horizon)
 
 
 def resolvable_on(event: ResolutionRequest, today: date) -> bool:
@@ -97,7 +124,11 @@ def plan_price_windows(
     windows: dict[str, tuple[date, date]] = {}
     for event in events:
         start = event.as_of.date() - timedelta(days=_LEAD_DAYS)
-        end = window_closes_on(event)
+        # Fetched past the closing session, unlike the ripeness test above:
+        # an unlisted closure would otherwise leave the window one session short
+        # of the exit and cost the event entirely, while an over-long window
+        # costs nothing but a few unused bars.
+        end = sessions_after(window_closes_on(event), _WINDOW_SLACK_SESSIONS)
         current = windows.get(event.ticker)
         if current is None:
             windows[event.ticker] = (start, end)
