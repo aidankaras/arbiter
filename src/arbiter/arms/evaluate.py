@@ -180,14 +180,23 @@ def evaluate_baseline(
     pooled_probabilities: list[float] = []
     pooled_outcomes: list[int] = []
     issuer_days = 0
+    # Kept apart from the pooled counts, which are now issuer-level: the report
+    # states both, and conflating them would understate the data behind a run.
+    scored_events = 0
 
     for day in test:
         probabilities = forecast(model, day.features)
-        pooled_probabilities.extend(probabilities)
-        pooled_outcomes.extend(day.outcomes)
-
         issuer_forecasts, issuer_returns = _by_issuer(probabilities, day)
         issuer_days += len(issuer_forecasts)
+        scored_events += len(day)
+
+        # Calibration, Brier skill and the base rate are pooled at the issuer-day
+        # level, the same unit the information coefficient is credited at. Pooled
+        # per filing they counted one outcome once per transaction row — a single
+        # Form 4 carried forty-four on a measured day — so the reliability curve's
+        # counts read as independent observations while being copies of a few.
+        pooled_probabilities.extend(issuer_forecasts)
+        pooled_outcomes.extend(int(realised > 0) for realised in issuer_returns)
         # A day with a handful of issuers produces a rank correlation that is
         # mostly noise; including it would add variance to the average without
         # adding information.
@@ -203,7 +212,7 @@ def evaluate_baseline(
         train_days=train_days,
         test_days=test_days,
         train_events=len(train_features),
-        test_events=len(pooled_outcomes),
+        test_events=scored_events,
         test_issuer_days=issuer_days,
         coefficients=model.coefficients(),
     )
