@@ -137,6 +137,27 @@ def plan_price_windows(
     return windows
 
 
+#: A day losing more than this share of its ripe events to missing price series
+#: is a broken request, not a thin market. Below it, exclusions are ordinary and
+#: recorded; above it, the day is refused rather than written as a quiet one.
+_SYSTEMIC_UNMEASURABLE_RATE = 0.5
+
+#: Ripe events a day needs before that share means anything. One event failing
+#: is one event; judging a rate on it would refuse every thin day as broken.
+_MIN_RIPE_EVENTS_TO_JUDGE = 10
+
+
+class SystemicUnmeasurableError(RuntimeError):
+    """Raised when most of a day's ripe events cannot be measured.
+
+    Distinct from an individual unresolvable event, which is ordinary. A day
+    where nearly every event fails shares one cause — a window that ends before
+    the horizon closes, a feed refusing the range — and writing it as a day that
+    simply produced few labels is what let such a defect run undetected across a
+    whole backfill.
+    """
+
+
 class MissingBenchmarkSeriesError(RuntimeError):
     """Raised when a sector benchmark has no prices over a day's window.
 
@@ -312,9 +333,11 @@ def resolve_stored_day(
     if ticker_for is not None:
         rows, unpriceable = with_tickers(rows, ticker_for)
 
-    labels = resolve_day(requests_from_rows(rows, domain), fetch_bars, benchmark_for, today)
+    labels, unmeasurable = resolve_day(
+        requests_from_rows(rows, domain), fetch_bars, benchmark_for, today
+    )
     write_events(labels, root, f"labels-{domain}", day)
-    write_unpriceable(unpriceable, root, domain, day, stage="labeling")
+    write_unpriceable([*unpriceable, *unmeasurable], root, domain, day, stage="labeling")
 
     return len(labels)
 
@@ -324,8 +347,8 @@ def resolve_day(
     fetch_bars: Callable[[Sequence[str], date, date], dict[str, list[Bar]]],
     benchmark_for: Callable[[int], str],
     today: date,
-) -> list[Label]:
-    """Measure every event whose window has closed, and leave the rest.
+) -> tuple[list[Label], list[dict[str, str]]]:
+    """Measure every event whose window has closed, and report what it could not.
 
     Every symbol is fetched in a single request spanning the day, rather than
     one request per symbol: a day's filings run to dozens of issuers against a
@@ -344,11 +367,19 @@ def resolve_day(
         today: the current session date, used to decide what has settled.
 
     Returns:
-        A label per measurable event, in the order the events were given.
+        A label per measurable event, in the order the events were given, and a
+        record per ripe event that produced none. The second is not a detail: a
+        day whose events were all ripe and all unmeasurable is a broken window
+        or a refused feed, and returning only the empty label list is what let
+        such a day be written as a quiet one.
+
+    Raises:
+        SystemicUnmeasurableError: most of a day's ripe events produced no label.
+        MissingBenchmarkSeriesError: a sector benchmark had no price series.
     """
     due = [event for event in events if resolvable_on(event, today)]
     if not due:
-        return []
+        return [], []
 
     benchmarks = {event.accession_no: benchmark_for(event.cik) for event in due}
 
@@ -385,6 +416,7 @@ def resolve_day(
     series = {**issuer_series, **benchmark_series}
 
     labels: list[Label] = []
+    unmeasurable: list[dict[str, str]] = []
     for event in due:
         benchmark_symbol = benchmarks[event.accession_no]
         issuer_sessions = entry_sessions(series.get(event.ticker, []), event.as_of)
@@ -399,9 +431,32 @@ def resolve_day(
                     accession_no=event.accession_no,
                 )
             )
-        except UnresolvableEventError:
-            continue
-    return labels
+        except UnresolvableEventError as exc:
+            # Recorded rather than dropped. A ripe event that produced no label
+            # is a fact about this day, and swallowing it is how a window one
+            # session short removed 675 of 675 events from a day while the run
+            # reported success and wrote an empty partition.
+            unmeasurable.append(
+                {
+                    "accession_no": event.accession_no,
+                    "ticker": event.ticker,
+                    "reason": str(exc),
+                }
+            )
+
+    if (
+        len(due) >= _MIN_RIPE_EVENTS_TO_JUDGE
+        and len(unmeasurable) > len(due) * _SYSTEMIC_UNMEASURABLE_RATE
+    ):
+        msg = (
+            f"{len(unmeasurable)} of {len(due)} ripe events had no usable series "
+            f"over {start.isoformat()}..{end.isoformat()}; a day where most events "
+            "cannot be measured indicts the window or the feed rather than the "
+            "issuers, and is refused rather than written as a thin day"
+        )
+        raise SystemicUnmeasurableError(msg)
+
+    return labels, unmeasurable
 
 
 def _series_or_raise(bars: list[Bar], horizon: int, name: str) -> list[Bar]:

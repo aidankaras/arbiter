@@ -13,6 +13,7 @@ import pytest
 from arbiter.evaluation.resolution import (
     MissingBenchmarkSeriesError,
     ResolutionRequest,
+    SystemicUnmeasurableError,
     resolve_day,
 )
 from arbiter.ingestion.market import Bar
@@ -64,7 +65,7 @@ def test_a_resolvable_event_becomes_a_label():
     benchmark = _series(3, ["50", "50", "50", "50", "50", "50", "52"])
     fetch, _ = _prices(MO=issuer, XLP=benchmark)
 
-    labels = resolve_day(
+    labels, _ = resolve_day(
         [_request("a-1")], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)
     )
 
@@ -79,7 +80,7 @@ def test_the_label_measures_from_the_session_after_the_filing():
     benchmark = _series(3, ["999", "50", "50", "50", "50", "50", "50"])
     fetch, _ = _prices(MO=issuer, XLP=benchmark)
 
-    labels = resolve_day(
+    labels, _ = resolve_day(
         [_request("a-1")], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)
     )
 
@@ -91,7 +92,7 @@ def test_events_whose_window_has_not_closed_are_left_alone():
     """They are not failures; they are simply not measurable yet."""
     fetch, calls = _prices()
 
-    labels = resolve_day(
+    labels, _ = resolve_day(
         [_request("a-1", day=28)],
         fetch,
         benchmark_for=lambda cik: "XLP",
@@ -132,7 +133,7 @@ def test_an_event_with_too_little_price_history_is_skipped():
     benchmark = _series(3, ["50", "50"])
     fetch, _ = _prices(MO=issuer, XLP=benchmark)
 
-    labels = resolve_day(
+    labels, _ = resolve_day(
         [_request("a-1")], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)
     )
 
@@ -162,7 +163,7 @@ def test_one_unmeasurable_event_does_not_stop_the_others():
     benchmark = _series(3, ["50"] * 7)
     fetch, _ = _prices(MO=good, XLP=benchmark)
 
-    labels = resolve_day(
+    labels, _ = resolve_day(
         [_request("a-1"), _request("b-1", ticker="NOPRICES")],
         fetch,
         benchmark_for=lambda cik: "XLP",
@@ -173,7 +174,58 @@ def test_one_unmeasurable_event_does_not_stop_the_others():
 
 
 def test_resolving_nothing_returns_nothing():
+    """No events means no labels, no exclusions, and no request."""
     fetch, calls = _prices()
 
-    assert resolve_day([], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)) == []
+    labels, unmeasurable = resolve_day(
+        [], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)
+    )
+
+    assert labels == []
+    assert unmeasurable == []
     assert calls == []
+
+
+def test_an_event_that_cannot_be_measured_is_recorded_not_just_dropped():
+    """A ripe event producing no label is a fact about the day.
+
+    Swallowing it is how a price window one session short removed 675 of 675
+    events from a day while the run reported success and wrote an empty
+    partition.
+    """
+    issuer = _series(3, ["100", "101"])
+    benchmark = _series(3, ["50"] * 12)
+    fetch, _ = _prices(MO=issuer, XLP=benchmark)
+
+    labels, unmeasurable = resolve_day(
+        [_request("a-1")], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)
+    )
+
+    assert labels == []
+    assert unmeasurable[0]["accession_no"] == "a-1"
+    assert unmeasurable[0]["ticker"] == "MO"
+    assert unmeasurable[0]["reason"], "the cause travels with the record"
+
+
+def test_a_day_where_most_ripe_events_fail_is_refused():
+    """They share one cause — a broken window or a refused feed, not thin issuers."""
+    benchmark = _series(3, ["50"] * 12)
+    fetch, _ = _prices(XLP=benchmark)
+
+    requests = [_request(f"a-{index}") for index in range(12)]
+
+    with pytest.raises(SystemicUnmeasurableError, match="indicts the window"):
+        resolve_day(requests, fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1))
+
+
+def test_a_thin_day_is_not_judged_against_that_share():
+    """One event failing is one event, not evidence that the day is broken."""
+    benchmark = _series(3, ["50"] * 12)
+    fetch, _ = _prices(XLP=benchmark)
+
+    labels, unmeasurable = resolve_day(
+        [_request("a-1")], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)
+    )
+
+    assert labels == []
+    assert len(unmeasurable) == 1
