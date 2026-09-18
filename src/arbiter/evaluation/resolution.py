@@ -137,6 +137,16 @@ def plan_price_windows(
     return windows
 
 
+class MissingBenchmarkSeriesError(RuntimeError):
+    """Raised when a sector benchmark has no prices over a day's window.
+
+    Distinct from an unmeasurable event. The benchmarks are a fixed, liquid set
+    of sector ETFs shared by every event in their sector, so one missing is a
+    fact about the request rather than about any issuer — and left unraised it
+    would remove a whole sector from the measured population without trace.
+    """
+
+
 class UnresolvableEventError(ValueError):
     """Raised when an event cannot be labelled from the series available.
 
@@ -350,9 +360,29 @@ def resolve_day(
     windows = plan_price_windows(due)
     start = min(span[0] for span in windows.values())
     end = max(span[1] for span in windows.values())
-    symbols = sorted(set(windows) | set(benchmarks.values()))
 
-    series = fetch_bars(symbols, start, end)
+    # Benchmarks are fetched apart from issuer tickers because the two carry
+    # different consequences. A thinly traded issuer the service refuses costs
+    # only its own events, which is why the batch tolerates gaps at all. A
+    # benchmark is one of a dozen sector ETFs that every event in that sector
+    # shares, so refusing one silently voids all of them — and at one symbol in
+    # several hundred it sits far below any share-based guard. Fetching them
+    # separately means a missing benchmark surfaces as a missing series here,
+    # against a set small enough for the absence to be unambiguous.
+    issuer_series = fetch_bars(sorted(windows), start, end)
+    benchmark_series = fetch_bars(sorted(set(benchmarks.values())), start, end)
+
+    unavailable = sorted(symbol for symbol, bars in benchmark_series.items() if not bars)
+    if unavailable:
+        msg = (
+            f"no price series for benchmark {', '.join(unavailable)} over "
+            f"{start.isoformat()}..{end.isoformat()}; every event in those sectors "
+            "would be dropped as unmeasurable, which indicts the request rather "
+            "than the issuers"
+        )
+        raise MissingBenchmarkSeriesError(msg)
+
+    series = {**issuer_series, **benchmark_series}
 
     labels: list[Label] = []
     for event in due:

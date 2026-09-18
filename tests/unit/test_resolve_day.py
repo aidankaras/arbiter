@@ -8,7 +8,13 @@ event whose prices do not support a measurement.
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from arbiter.evaluation.resolution import ResolutionRequest, resolve_day
+import pytest
+
+from arbiter.evaluation.resolution import (
+    MissingBenchmarkSeriesError,
+    ResolutionRequest,
+    resolve_day,
+)
 from arbiter.ingestion.market import Bar
 
 SESSION_HOUR = 4
@@ -96,8 +102,14 @@ def test_events_whose_window_has_not_closed_are_left_alone():
     assert calls == [], "an unmeasurable event must not cost a price request"
 
 
-def test_a_day_costs_one_request_however_many_events_it_holds():
-    """A request per issuer would exhaust a per-minute rate limit on a real day."""
+def test_a_days_requests_do_not_grow_with_the_number_of_events():
+    """A request per issuer would exhaust a per-minute rate limit on a real day.
+
+    Two requests, not one: issuer tickers and benchmarks are fetched separately
+    because a refused issuer should cost only its own events while a refused
+    benchmark indicts the request. Both are constant in the number of events,
+    which is the property that matters for the rate limit.
+    """
     issuer = _series(3, ["100"] * 12)
     benchmark = _series(3, ["50"] * 12)
     fetch, calls = _prices(MO=issuer, XLP=benchmark)
@@ -109,8 +121,9 @@ def test_a_day_costs_one_request_however_many_events_it_holds():
         today=date(2026, 9, 1),
     )
 
-    assert len(calls) == 1
-    assert set(calls[0]) == {"MO", "XLP"}
+    assert len(calls) == 2
+    assert set(calls[0]) == {"MO"}, "issuer tickers travel together"
+    assert set(calls[1]) == {"XLP"}, "benchmarks travel apart"
 
 
 def test_an_event_with_too_little_price_history_is_skipped():
@@ -126,15 +139,21 @@ def test_an_event_with_too_little_price_history_is_skipped():
     assert labels == []
 
 
-def test_an_event_with_no_benchmark_series_is_skipped():
+def test_a_benchmark_with_no_series_stops_the_day_rather_than_thinning_it():
+    """Every event in a sector shares its benchmark, so losing one loses them all.
+
+    A thinly traded issuer the service refuses costs only its own events. A
+    sector ETF is one symbol of a dozen that hundreds of events depend on, and
+    at that share no proportional guard would ever notice it — so silently
+    skipping would remove a whole sector from the measured population.
+    """
     issuer = _series(3, ["100"] * 8)
     fetch, _ = _prices(MO=issuer)
 
-    labels = resolve_day(
-        [_request("a-1")], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)
-    )
-
-    assert labels == []
+    with pytest.raises(MissingBenchmarkSeriesError, match="XLP"):
+        resolve_day(
+            [_request("a-1")], fetch, benchmark_for=lambda cik: "XLP", today=date(2026, 9, 1)
+        )
 
 
 def test_one_unmeasurable_event_does_not_stop_the_others():
