@@ -21,6 +21,7 @@ dependencies = [
     "typer>=0.15",
     "pandas>=2.2",
     "numpy>=2.1",
+    "scipy>=1.14",
     "pyarrow>=18.0",
     "edgartools>=5.58.0",
 ]
