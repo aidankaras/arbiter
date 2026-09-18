@@ -39,12 +39,16 @@ def _request(accession: str, ticker: str = "MO", day: int = 3) -> ResolutionRequ
 
 
 def _prices(**series: list[Bar]):
-    """Return a fetcher over canned series, recording what it was asked for."""
-    calls: list[str] = []
+    """Return a fetcher over canned series, recording what it was asked for.
 
-    def fetch(symbol: str, start: date, end: date) -> list[Bar]:
-        calls.append(symbol)
-        return series.get(symbol, [])
+    `calls` counts requests, not symbols: the fetcher takes every symbol at once,
+    so one entry per call is what the rate limit actually sees.
+    """
+    calls: list[list[str]] = []
+
+    def fetch(symbols, start: date, end: date) -> dict[str, list[Bar]]:
+        calls.append(list(symbols))
+        return {symbol: series.get(symbol, []) for symbol in symbols}
 
     return fetch, calls
 
@@ -92,7 +96,8 @@ def test_events_whose_window_has_not_closed_are_left_alone():
     assert calls == [], "an unmeasurable event must not cost a price request"
 
 
-def test_prices_are_fetched_once_per_symbol_not_once_per_event():
+def test_a_day_costs_one_request_however_many_events_it_holds():
+    """A request per issuer would exhaust a per-minute rate limit on a real day."""
     issuer = _series(3, ["100"] * 12)
     benchmark = _series(3, ["50"] * 12)
     fetch, calls = _prices(MO=issuer, XLP=benchmark)
@@ -104,8 +109,8 @@ def test_prices_are_fetched_once_per_symbol_not_once_per_event():
         today=date(2026, 9, 1),
     )
 
-    assert calls.count("MO") == 1
-    assert calls.count("XLP") == 1
+    assert len(calls) == 1
+    assert set(calls[0]) == {"MO", "XLP"}
 
 
 def test_an_event_with_too_little_price_history_is_skipped():

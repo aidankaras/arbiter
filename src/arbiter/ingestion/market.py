@@ -24,6 +24,12 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from arbiter.config import get_settings
 from arbiter.ingestion.timestamps import SEC_TIMEZONE
@@ -139,6 +145,27 @@ def _credentials() -> dict[str, str]:
     }
 
 
+def _is_retryable(exc: BaseException) -> bool:
+    """Report whether a failed request is worth attempting again.
+
+    Transport failures and the service asking for patience are retried. A
+    rejected symbol, a bad credential, or a refused window are not: retrying
+    those turns an immediate, legible failure into a slow one, and a credential
+    problem retried into silence would look like a day with no prices.
+    """
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return False
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    reraise=True,
+)
 def daily_bars(
     symbols: Sequence[str], start: date, end: date, today: date
 ) -> dict[str, list[Bar]]:

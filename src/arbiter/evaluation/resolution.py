@@ -180,7 +180,7 @@ def resolve_stored_day(
     day: date,
     domain: str,
     root: Path,
-    fetch_bars: Callable[[str, date, date], list[Bar]],
+    fetch_bars: Callable[[Sequence[str], date, date], dict[str, list[Bar]]],
     benchmark_for: Callable[[int], str],
     today: date,
 ) -> int:
@@ -201,7 +201,7 @@ def resolve_stored_day(
 
 def resolve_day(
     events: Sequence[ResolutionRequest],
-    fetch_bars: Callable[[str, date, date], list[Bar]],
+    fetch_bars: Callable[[Sequence[str], date, date], dict[str, list[Bar]]],
     benchmark_for: Callable[[int], str],
     today: date,
 ) -> list[Label]:
@@ -231,20 +231,17 @@ def resolve_day(
 
     benchmarks = {event.accession_no: benchmark_for(event.cik) for event in due}
 
-    # One window per symbol, issuers and benchmarks alike, so a benchmark shared
-    # by fifty issuers is still fetched once.
+    # Every symbol is fetched in one request across one window spanning the day's
+    # events. Requesting per symbol instead costs a request per issuer, and a
+    # day's filings run to hundreds of issuers against a rate limit measured per
+    # minute. The window is slightly wider than any single event needs, which is
+    # far cheaper than the requests it saves.
     windows = plan_price_windows(due)
-    for event in due:
-        span = windows[event.ticker]
-        symbol = benchmarks[event.accession_no]
-        existing = windows.get(symbol)
-        windows[symbol] = (
-            span if existing is None else (min(existing[0], span[0]), max(existing[1], span[1]))
-        )
+    start = min(span[0] for span in windows.values())
+    end = max(span[1] for span in windows.values())
+    symbols = sorted(set(windows) | set(benchmarks.values()))
 
-    series = {
-        symbol: fetch_bars(symbol, start, end) for symbol, (start, end) in windows.items()
-    }
+    series = fetch_bars(symbols, start, end)
 
     labels: list[Label] = []
     for event in due:
