@@ -15,8 +15,17 @@ import typer
 from pydantic import ValidationError
 
 from arbiter import __version__
+from arbiter.arms.evaluate import (
+    TRAIN_FRACTION,
+    evaluate_baseline,
+    load_days,
+    stored_days,
+)
 from arbiter.config import Settings, get_settings
+from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.resolution import HORIZONS, resolve_stored_day
+from arbiter.ingestion.backfill import backfill as run_backfill
+from arbiter.ingestion.backfill import day_is_stored, ingest_and_resolve, sampled_trading_days
 from arbiter.ingestion.market import Bar, current_session_date, daily_bars_tolerating_gaps
 from arbiter.ingestion.pipeline import ingest_day
 from arbiter.ingestion.sectors import benchmark_for_issuer, issuer_ticker
@@ -121,3 +130,79 @@ def resolve(
         ticker_for=issuer_ticker,
     )
     typer.echo(f"labels-{domain}: {written}")
+
+
+@app.command()
+def report(
+    domain: str = "insider",
+    root: str = "data/events",
+    out: str = "reports",
+    train_fraction: float = TRAIN_FRACTION,
+) -> None:
+    """Fit the baseline arm on the stored history and write its measurement.
+
+    Reads every day the store holds labels for, fits on the earlier fraction of
+    them, and scores the rest. The report is written to `reports/` so that what
+    was claimed at a given commit stays inspectable; recomputing against more
+    data produces a new report rather than an edit to the old one.
+    """
+    store = Path(root)
+    days = stored_days(store, domain)
+    if not days:
+        typer.echo(f"no labelled {domain} days under {root}; run `arbiter backfill`", err=True)
+        raise typer.Exit(code=1)
+
+    loaded = load_days(store, domain, days)
+    evaluation = evaluate_baseline(loaded, train_fraction)
+
+    destination = Path(out) / f"baseline-{domain}.md"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        render_baseline_report(evaluation, generated_on=current_session_date()),
+        encoding="utf-8",
+    )
+
+    typer.echo(
+        f"{destination}: IC {evaluation.ic.mean:+.4f} "
+        f"(se {evaluation.ic.standard_error:.4f}, t {evaluation.ic.t_statistic:+.2f}) "
+        f"over {evaluation.ic.days} days, {evaluation.test_issuer_days:,} issuer-days"
+    )
+
+
+@app.command()
+def backfill(
+    start: str,
+    end: str,
+    every: int = 1,
+    root: str = "data/events",
+    min_value_usd: str = "50000",
+) -> None:
+    """Build a history by ingesting and labeling a range of trading days.
+
+    A day costs the same regardless of how many of its filings qualify, because
+    each must be fetched to find out, so `--every` is the lever on how long a
+    run takes. Sampling every Nth trading day spreads observations across months
+    at the cost of a contiguous block, which matters because events filed on one
+    day share a market factor that the sector benchmark only partly removes.
+
+    Days already stored are skipped, so an interrupted run is simply restarted.
+    """
+    days = sampled_trading_days(date.fromisoformat(start), date.fromisoformat(end), every)
+    ingest_step, resolve_step = ingest_and_resolve(Path(root), Decimal(min_value_usd))
+
+    typer.echo(f"{len(days)} trading days from {days[0]} to {days[-1]}" if days else "no days")
+
+    summary = run_backfill(
+        days,
+        ingest=ingest_step,
+        resolve=resolve_step,
+        is_stored=lambda day: day_is_stored(Path(root), day),
+        on_progress=typer.echo,
+    )
+
+    typer.echo(
+        f"completed: {len(summary.completed)}  skipped: {len(summary.skipped)}  "
+        f"failed: {len(summary.failed)}  events: {summary.events}  labels: {summary.labels}"
+    )
+    for day, cause in sorted(summary.failed.items()):
+        typer.echo(f"  {day.isoformat()}: {cause}", err=True)
