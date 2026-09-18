@@ -33,7 +33,7 @@ def test_ingesting_a_settled_day_produces_events_in_both_domains(
     counts, _ = ingested
     assert counts["insider"] > 0
     assert counts["redflag"] > 0
-    assert set(counts) == {"insider", "redflag", "rejected"}
+    assert set(counts) == {"insider", "redflag", "rejected", "unpriceable"}
 
 
 def test_stored_insider_events_respect_the_filter_rules(
@@ -76,7 +76,12 @@ def test_events_carry_the_acceptance_instant_not_midnight(
 def test_a_real_day_parses_without_systemic_rejections(
     ingested: tuple[dict[str, int], Path],
 ):
-    """A rejection rate above a few percent means a format break, not odd filers."""
+    """A rejection rate above a few percent means a format break, not odd filers.
+
+    Issuers with no listed common stock are excluded from both sides of this
+    ratio. They are a property of the filing population rather than a parsing
+    problem, and on a real day they ran to 4.3% of Form 4 filings on their own.
+    """
     counts, root = ingested
 
     attempted = counts["insider"] + counts["redflag"] + counts["rejected"]
@@ -84,6 +89,9 @@ def test_a_real_day_parses_without_systemic_rejections(
 
     quarantine = root / "rejected" / "insider" / f"{SETTLED_DAY.isoformat()}.json"
     assert quarantine.exists(), "every run records its rejections, including none"
+
+    unpriceable = root / "unpriceable" / "insider" / f"{SETTLED_DAY.isoformat()}.json"
+    assert unpriceable.exists(), "every run records the filers it could not price"
 
 
 def test_rerunning_the_day_is_idempotent(ingested: tuple[dict[str, int], Path], tmp_path: Path):
