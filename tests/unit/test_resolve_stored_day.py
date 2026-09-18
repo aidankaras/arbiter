@@ -105,7 +105,7 @@ def test_a_day_with_no_resolvable_events_still_records_a_partition(tmp_path: Pat
         day=date(2026, 8, 28),
         domain="insider",
         root=tmp_path,
-        fetch_bars=lambda symbol, start, end: [],
+        fetch_bars=lambda symbols, start, end: {symbol: [] for symbol in symbols},
         benchmark_for=lambda cik: "XLP",
         today=date(2026, 9, 1),
     )
