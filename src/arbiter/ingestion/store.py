@@ -23,8 +23,9 @@ passing them through binary floating point.
 
 from __future__ import annotations
 
+import json
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -123,6 +124,34 @@ def write_events(events: Sequence[BaseModel], root: Path, domain: str, day: date
         staged = Path(handle.name)
     try:
         pq.write_table(table, staged)
+        staged.replace(path)
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
+    return path
+
+
+def write_unpriceable(
+    records: Sequence[Mapping[str, str]], root: Path, domain: str, day: date
+) -> Path:
+    """Record the day's events that could not be priced, and return the path.
+
+    Kept beside the labels rather than inside them: an event dropped for want of
+    a listed security is not a measurement, but neither is it nothing. Without
+    this record a day thinned by unlistable issuers looks identical to a quiet
+    one, and the difference decides whether a gap in the dataset is a finding or
+    a defect.
+
+    Written for every processed day, including days with nothing to report, for
+    the same reason an empty partition is still written.
+    """
+    path = root / "unpriceable" / domain / f"{day.isoformat()}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as handle:
+        staged = Path(handle.name)
+    try:
+        staged.write_text(json.dumps(list(records), indent=1) + "\n", encoding="utf-8")
         staged.replace(path)
     except BaseException:
         staged.unlink(missing_ok=True)

@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from arbiter.evaluation.resolution import HORIZONS, resolve_stored_day
-from arbiter.ingestion.market import current_session_date, daily_bars
+from arbiter.ingestion.market import current_session_date, daily_bars_tolerating_gaps
 from arbiter.ingestion.pipeline import ingest_day
 from arbiter.ingestion.sectors import benchmark_for_issuer
 from arbiter.ingestion.store import read_events
@@ -27,7 +27,8 @@ MIN_VALUE = Decimal("50000")
 
 
 def _fetch(symbols, start: date, end: date):
-    return daily_bars(list(symbols), start, end, today=current_session_date())
+    """Fetch as production does: one batch, tolerating symbols the tape refuses."""
+    return daily_bars_tolerating_gaps(list(symbols), start, end, today=current_session_date())
 
 
 @pytest.fixture(scope="module")

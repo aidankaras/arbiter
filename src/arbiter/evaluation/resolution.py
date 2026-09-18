@@ -22,7 +22,7 @@ from typing import Any, cast
 from pydantic import BaseModel, ConfigDict
 
 from arbiter.evaluation.labels import abnormal_return
-from arbiter.ingestion.market import Bar
+from arbiter.ingestion.market import Bar, is_tradeable_symbol
 
 #: Sessions held per domain. Insider information resolves within a week; the
 #: drift after an auditor change or restatement runs for about a month, so a
@@ -138,6 +138,70 @@ class Label(BaseModel):
     exit_session: date
 
 
+def with_tickers(
+    rows: Sequence[Mapping[str, Any]], ticker_for: Callable[[int], str | None]
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Give each row a ticker, looking one up where the filing does not carry it.
+
+    Form 4 reports a ticker; an 8-K identifies its filer by CIK alone. Rows that
+    already carry one are left untouched, since looking it up again would spend
+    a request to learn what the filing already said.
+
+    Issuers are looked up once each rather than once per event, because a day's
+    filings concentrate in far fewer issuers than filings.
+
+    Returns the rows that can be priced, and records for those that cannot. An
+    issuer with no listed security is a fact about the issuer; dropping it
+    silently would make it indistinguishable from an event that never existed.
+
+    Raises:
+        KeyError: a row carries no CIK, so there is no identity to look up.
+    """
+    priced: list[dict[str, Any]] = []
+    unpriceable: list[dict[str, str]] = []
+    resolved: dict[int, str | None] = {}
+
+    for row in rows:
+        if "cik" not in row:
+            msg = "stored event is missing 'cik'; its issuer cannot be identified"
+            raise KeyError(msg)
+
+        existing = str(row.get("ticker") or "").strip()
+        if existing:
+            priced.append(dict(row))
+            continue
+
+        cik = int(row["cik"])
+        if cik not in resolved:
+            resolved[cik] = ticker_for(cik)
+
+        ticker = resolved[cik]
+        if not ticker:
+            unpriceable.append(
+                {
+                    "accession_no": str(row["accession_no"]),
+                    "reason": "issuer has no listed ticker",
+                }
+            )
+            continue
+
+        if not is_tradeable_symbol(ticker):
+            # A preferred issue or unit, which this study does not cover, and
+            # which the price service rejects — taking every other symbol in the
+            # same batched request down with it.
+            unpriceable.append(
+                {
+                    "accession_no": str(row["accession_no"]),
+                    "reason": f"{ticker} is not a plain equity symbol",
+                }
+            )
+            continue
+
+        priced.append({**row, "ticker": ticker})
+
+    return priced, unpriceable
+
+
 def requests_from_rows(
     rows: Sequence[Mapping[str, Any]], domain: str
 ) -> list[ResolutionRequest]:
@@ -183,19 +247,34 @@ def resolve_stored_day(
     fetch_bars: Callable[[Sequence[str], date, date], dict[str, list[Bar]]],
     benchmark_for: Callable[[int], str],
     today: date,
+    ticker_for: Callable[[int], str | None] | None = None,
 ) -> int:
     """Measure one stored day of a domain and write its labels.
+
+    `ticker_for` supplies a ticker for domains whose filings do not carry one.
+    Without it a red-flag day yields nothing, since an 8-K names its filer by
+    CIK alone. Rows that already carry a ticker never reach it.
 
     Returns the number of labels written. A partition is written even when that
     number is zero, so a day that was processed and yielded nothing stays
     distinguishable from a day never processed — the same distinction the event
     store keeps, and for the same reason.
-    """
-    from arbiter.ingestion.store import read_events, write_events
 
-    rows = read_events(root, domain, day)
+    Issuers that cannot be priced are recorded beside the labels rather than
+    discarded, so a thin day can be told apart from a day whose issuers were
+    unlistable.
+    """
+    from arbiter.ingestion.store import read_events, write_events, write_unpriceable
+
+    rows: Sequence[Mapping[str, Any]] = read_events(root, domain, day)
+    unpriceable: list[dict[str, str]] = []
+    if ticker_for is not None:
+        rows, unpriceable = with_tickers(rows, ticker_for)
+
     labels = resolve_day(requests_from_rows(rows, domain), fetch_bars, benchmark_for, today)
     write_events(labels, root, f"labels-{domain}", day)
+    write_unpriceable(unpriceable, root, domain, day)
+
     return len(labels)
 
 
@@ -207,9 +286,10 @@ def resolve_day(
 ) -> list[Label]:
     """Measure every event whose window has closed, and leave the rest.
 
-    Prices are fetched once per symbol rather than once per event: a day's
-    filings concentrate in far fewer issuers than events, so the request count
-    follows the number of distinct symbols.
+    Every symbol is fetched in a single request spanning the day, rather than
+    one request per symbol: a day's filings run to dozens of issuers against a
+    rate limit measured per minute, and requesting them separately exhausted it
+    before a single label was produced.
 
     An event that cannot be measured is omitted, never approximated. Too little
     price history and a missing benchmark are ordinary states — a recent event,

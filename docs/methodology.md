@@ -110,6 +110,32 @@ the change in realized volatility around the event.
 Events with insufficient price coverage are marked unresolvable and excluded.
 They are never assigned a zero return.
 
+### Exclusions from the measured population
+
+Three classes of event carry no label, and each is recorded per day beside the
+labels rather than dropped, so that a thin day stays distinguishable from a day
+whose issuers were unlistable:
+
+- **No listed security.** A current report may be filed by a trust, a shell, or
+  an issuer whose securities are not exchange-listed. There is no price series
+  to measure and no benchmark to measure against.
+- **No plain equity symbol.** Issuers whose only listed security is a preferred
+  issue, warrant, or unit are outside the comparison, which is defined over
+  common equity. Their return series is driven by rate and structure effects
+  that the sector benchmark does not span.
+- **Insufficient price coverage.** The horizon window has not closed, or the
+  security did not trade across enough of it.
+
+These exclusions are properties of the issuer, not of any arm's forecast, and
+they are applied before any arm sees the event. All four arms therefore measure
+the same population.
+
+One consequence deserves stating plainly: excluding unlistable and non-common
+issuers removes the least liquid tail of filers. Reported results describe
+filings by issuers with listed common stock, which is a narrower claim than
+"filings," and comparisons against published event-study results should account
+for it.
+
 ## Screening
 
 Running every arm on every event is not affordable, so `agent` and `arbiter` run
