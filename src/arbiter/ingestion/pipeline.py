@@ -75,27 +75,28 @@ def _untimestamped_into(rejected: list[dict[str, str]]) -> Callable[[str], None]
 
 def _quarantine(
     rejected: list[dict[str, str]], root: Path, domain: str, day: date, attempted: int
-) -> None:
-    """Record filings that could not be parsed, and refuse a day that mostly failed.
+) -> str | None:
+    """Record filings that could not be parsed, and report a systemic share.
 
     Rejections are written rather than logged and forgotten: a filing dropped
     without a trace is indistinguishable from one that never existed, and the
     difference decides whether a day's event count means anything.
 
-    Raises:
-        SystemicParseFailureError: too large a share of the day failed to parse.
+    Returns a description of the breakage rather than raising, so that every
+    domain is judged before any of them stops the day. Raising here meant the
+    first domain to fail masked the second, and a reader saw one problem where
+    there were two.
     """
     path = root / "rejected" / domain / f"{day.isoformat()}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rejected, indent=1) + "\n")
 
     if attempted and len(rejected) / attempted > _SYSTEMIC_REJECTION_RATE:
-        msg = (
+        return (
             f"{len(rejected)} of {attempted} {domain} filings on {day.isoformat()} "
-            "failed to parse; this is a format or client breakage rather than a few "
-            f"odd filers, so the day is not recorded. See {path}"
+            f"failed to parse (see {path})"
         )
-        raise SystemicParseFailureError(msg)
+    return None
 
 
 def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
@@ -161,20 +162,37 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
     insider_rejected.extend(insider_untimestamped)
     redflag_rejected.extend(redflag_untimestamped)
 
-    _quarantine(
-        insider_rejected,
-        root,
-        "insider",
-        day,
-        len(insider_filings) + len(insider_untimestamped) - len(insider_unpriceable),
-    )
-    _quarantine(
-        redflag_rejected,
-        root,
-        "redflag",
-        day,
-        len(redflag_filings) + len(redflag_untimestamped),
-    )
+    # Both domains are judged before either stops the day. They fail for
+    # independent reasons, and raising inside the first check meant a day broken
+    # in both was reported as broken in one.
+    breakages = [
+        _quarantine(
+            insider_rejected,
+            root,
+            "insider",
+            day,
+            len(insider_filings) + len(insider_untimestamped) - len(insider_unpriceable),
+        ),
+        _quarantine(
+            redflag_rejected,
+            root,
+            "redflag",
+            day,
+            len(redflag_filings) + len(redflag_untimestamped),
+        ),
+    ]
+    named = [breakage for breakage in breakages if breakage is not None]
+    if named:
+        # Neither domain is written. A day is stored whole or not at all, so the
+        # resume rule can treat a missing partition as work still to do; writing
+        # the healthy domain would leave a half-day that looks complete to
+        # nothing and costs a re-extraction anyway, since a retry reprocesses
+        # both domains regardless.
+        msg = (
+            f"{'; '.join(named)}. This is a format or client breakage rather than "
+            "a few odd filers, so the day is not recorded."
+        )
+        raise SystemicParseFailureError(msg)
 
     write_events(insider_events, root, "insider", day)
     write_events(redflag_events, root, "redflag", day)
