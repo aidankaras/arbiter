@@ -91,17 +91,26 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
     for label in read_events(root, f"labels-{domain}", day):
         outcomes.setdefault(str(label["accession_no"]), float(label["abnormal_return"]))
 
-    labelled = [event for event in events if str(event["accession_no"]) in outcomes]
-    if not labelled:
+    # Features are computed over the whole day and only then narrowed to the
+    # events that resolved. One feature counts the insiders trading the same
+    # issuer that day, and computing it over the labelled subset would make it
+    # depend on which events turned out to be priceable — a fact from after the
+    # filing. At the moment a forecast is made, every filing that day is
+    # visible and none of their outcomes are.
+    features = day_features(events)
+    kept = [
+        index for index, event in enumerate(events) if str(event["accession_no"]) in outcomes
+    ]
+    if not kept:
         return DayOfEvents(day=day, features=[], outcomes=[], returns=[], issuers=[])
 
-    returns = [outcomes[str(event["accession_no"])] for event in labelled]
+    returns = [outcomes[str(events[index]["accession_no"])] for index in kept]
     return DayOfEvents(
         day=day,
-        features=day_features(labelled),
+        features=[features[index] for index in kept],
         outcomes=[int(value > 0) for value in returns],
         returns=returns,
-        issuers=[int(event["cik"]) for event in labelled],
+        issuers=[int(events[index]["cik"]) for index in kept],
     )
 
 
