@@ -304,7 +304,7 @@ def resolve_stored_day(
 
     labels = resolve_day(requests_from_rows(rows, domain), fetch_bars, benchmark_for, today)
     write_events(labels, root, f"labels-{domain}", day)
-    write_unpriceable(unpriceable, root, domain, day)
+    write_unpriceable(unpriceable, root, domain, day, stage="labeling")
 
     return len(labels)
 

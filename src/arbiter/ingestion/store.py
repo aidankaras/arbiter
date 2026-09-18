@@ -132,9 +132,14 @@ def write_events(events: Sequence[BaseModel], root: Path, domain: str, day: date
 
 
 def write_unpriceable(
-    records: Sequence[Mapping[str, str]], root: Path, domain: str, day: date
+    records: Sequence[Mapping[str, str]], root: Path, domain: str, day: date, stage: str
 ) -> Path:
     """Record the day's events that could not be priced, and return the path.
+
+    `stage` names the pass that excluded them — extraction rejects a filer with
+    no listed stock, labeling rejects an issuer whose ticker cannot be resolved.
+    The two run back to back over the same day, so writing them to one path
+    meant the second silently erased the first.
 
     Kept beside the labels rather than inside them: an event dropped for want of
     a listed security is not a measurement, but neither is it nothing. Without
@@ -145,7 +150,7 @@ def write_unpriceable(
     Written for every processed day, including days with nothing to report, for
     the same reason an empty partition is still written.
     """
-    path = root / "unpriceable" / domain / f"{day.isoformat()}.json"
+    path = root / "unpriceable" / stage / domain / f"{day.isoformat()}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as handle:

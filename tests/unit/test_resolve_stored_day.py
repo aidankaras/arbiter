@@ -117,7 +117,7 @@ def test_a_day_with_no_resolvable_events_still_records_a_partition(tmp_path: Pat
 
 
 def _unpriceable(root: Path, domain: str, day: date) -> list[dict[str, str]]:
-    record = root / "unpriceable" / domain / f"{day.isoformat()}.json"
+    record = root / "unpriceable" / "labeling" / domain / f"{day.isoformat()}.json"
     return json.loads(record.read_text(encoding="utf-8"))
 
 

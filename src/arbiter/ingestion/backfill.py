@@ -147,18 +147,30 @@ def backfill(
     return report
 
 
-def day_is_stored(
-    root: Path, day: date, domains: Sequence[str] = ("insider", "redflag")
-) -> bool:
-    """Report whether every domain already holds a partition for this day.
+#: The domains a complete day holds, each with its events and its labels.
+_DOMAINS = ("insider", "redflag")
 
-    Resuming on this rather than on a separate progress file means an
-    interrupted run leaves nothing to reconcile: the dataset itself records how
-    far the run got.
+
+def day_is_stored(root: Path, day: date) -> bool:
+    """Report whether this day is complete: events *and* labels, for every domain.
+
+    Resuming on the dataset rather than on a separate progress file means an
+    interrupted run leaves nothing to reconcile.
+
+    Labels are part of the test, not just events. Ingestion writes the event
+    partitions before labelling runs, so a day whose labelling failed still has
+    them — and a resume rule that looked only at events would treat that day as
+    finished and skip it forever, leaving a hole exactly where a failure was
+    already recorded. The same applies after a labelling bug is fixed: the day
+    has to be re-labelled, and only a rule that notices the missing labels will
+    let it be.
     """
     from arbiter.ingestion.store import partition_exists
 
-    return all(partition_exists(root, domain, day) for domain in domains)
+    return all(
+        partition_exists(root, domain, day) and partition_exists(root, f"labels-{domain}", day)
+        for domain in _DOMAINS
+    )
 
 
 def ingest_and_resolve(
