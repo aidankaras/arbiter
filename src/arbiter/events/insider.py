@@ -168,6 +168,9 @@ def _optional_decimal(row: dict[str, Any], column: str, accession_no: str) -> De
 def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEvent]:
     """Convert one parsed Form 4 into events, one per reported transaction.
 
+    A transaction reported by several joint owners is one transaction and yields
+    one event.
+
     Raises:
         KeyError: the parsed table lacks a column an event requires. The filing
             format changed and must be re-examined rather than worked around,
@@ -178,6 +181,18 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
     is_plan_trade = bool(form4.aff10b5_one)
 
     events: list[InsiderEvent] = []
+    # One transaction reported jointly appears once per reporting owner, with
+    # the owners collapsed into a single name string — so a fund's purchase
+    # filed by three related entities arrives as three rows identical in every
+    # field. Counting them separately would weight one transaction three times,
+    # and joint filing is how funds, groups and ten-percent owners file while
+    # officers file alone. The over-weighting would therefore track filer type,
+    # which is the very thing the study asks the data to discriminate on.
+    #
+    # Rows are collapsed on every reported field including the transaction date,
+    # so two genuine trades differing in any of size, price, date or resulting
+    # holding remain two events.
+    seen: set[tuple[str, ...]] = set()
     for row in frame.to_dict(orient="records"):
         # Presence of a *value*, not of a column: every row in a frame carries
         # the same keys, so a column-presence test can never filter the holdings
@@ -210,6 +225,22 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
                 "the event cannot be priced"
             )
             raise UnpriceableIssuerError(msg)
+
+        identity = tuple(
+            str(row.get(column))
+            for column in (
+                "Insider",
+                "Code",
+                "Shares",
+                "Price",
+                "Value",
+                "Remaining Shares",
+                "Date",
+            )
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
 
         events.append(
             InsiderEvent(

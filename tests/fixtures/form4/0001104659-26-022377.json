@@ -1,0 +1,56 @@
+{
+  "accession_no": "0001104659-26-022377",
+  "form": "4",
+  "cik": 1973442,
+  "company": "BEAUCHAMP DAMIAN R.",
+  "as_of": "2026-03-02T23:00:34+00:00",
+  "filing_date": "2026-03-02",
+  "aff10b5_one": false,
+  "rows": [
+    {
+      "Transaction Type": "Sale",
+      "Code": "S",
+      "Description": "Open Market Sale",
+      "Shares": 1881,
+      "Price": 2.0,
+      "Value": 3762.0,
+      "Date": 1772064000000,
+      "Form": "Form 4",
+      "Issuer": "NET Power Inc.",
+      "Ticker": "NPWR",
+      "Insider": "8 Rivers Capital, LLC / Damian R. Beauchamp",
+      "Position": "10% Owner",
+      "Remaining Shares": 500000
+    },
+    {
+      "Transaction Type": "Sale",
+      "Code": "S",
+      "Description": "Open Market Sale",
+      "Shares": 4744,
+      "Price": 2.0003,
+      "Value": 9489.4232,
+      "Date": 1772064000000,
+      "Form": "Form 4",
+      "Issuer": "NET Power Inc.",
+      "Ticker": "NPWR",
+      "Insider": "8 Rivers Capital, LLC / Damian R. Beauchamp",
+      "Position": "10% Owner",
+      "Remaining Shares": 500000
+    },
+    {
+      "Transaction Type": "Sale",
+      "Code": "S",
+      "Description": "Open Market Sale",
+      "Shares": 79858,
+      "Price": 2.0508,
+      "Value": 163772.7864,
+      "Date": 1772064000000,
+      "Form": "Form 4",
+      "Issuer": "NET Power Inc.",
+      "Ticker": "NPWR",
+      "Insider": "8 Rivers Capital, LLC / Damian R. Beauchamp",
+      "Position": "10% Owner",
+      "Remaining Shares": 500000
+    }
+  ]
+}
