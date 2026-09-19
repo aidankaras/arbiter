@@ -21,6 +21,9 @@ from arbiter.arms.evaluate import Evaluation
 #: comparison is read at a glance where two columns of decimals are not.
 _BAR_WIDTH = 24
 
+#: A count-weighted residual below this is too small to report as a shift.
+_MATERIAL_RESIDUAL = 0.005
+
 
 def _bar(value: float, width: int = _BAR_WIDTH) -> str:
     """Draw a proportion as a fixed-width bar."""
@@ -68,26 +71,53 @@ def _calibration_verdict(evaluation: Evaluation) -> str:
 def _bias_direction(evaluation: Evaluation) -> str:
     """Describe which way the forecasts miss, measured rather than assumed.
 
-    A negative Brier skill says the probabilities were worse than a constant; it
-    carries no direction. Taking one from the sign alone stated the opposite of
-    what the first published report showed, so the direction is computed from
-    the reliability bands, weighted by the events in each.
+    A negative Brier skill says only that the probabilities were worse than a
+    constant; it carries no direction. Taking one from that sign alone stated
+    the opposite of what the first published report showed.
+
+    Both the size and the consistency of the miss are read from the reliability
+    bands: the count-weighted residual says how far, and the per-band signs say
+    whether the bands agree. Calling them contradictory from a small aggregate
+    alone would repeat the original error one level down, because bands that all
+    run slightly the same way also average to a small number.
     """
     counted = [band for band in evaluation.calibration if band.count]
     if not counted:
         return ""
 
     events = sum(band.count for band in counted)
-    residual = sum((band.forecast - band.realised) * band.count for band in counted) / events
-    if abs(residual) < 0.005:
-        return (
-            " The reliability table below shows no consistent direction to the "
-            "miss: the bands are wrong in both directions rather than shifted."
+    residuals = [(band.forecast - band.realised, band.count) for band in counted]
+    weighted = sum(residual * count for residual, count in residuals) / events
+
+    high = sum(1 for residual, _ in residuals if residual > 0)
+    low = sum(1 for residual, _ in residuals if residual < 0)
+    agree = not (high and low)
+
+    if abs(weighted) >= _MATERIAL_RESIDUAL:
+        direction = "high" if weighted > 0 else "low"
+        consistency = (
+            "in every populated band"
+            if agree
+            else (
+                f"on balance, with {min(high, low)} of {len(residuals)} bands "
+                "running the other way"
+            )
         )
-    direction = "high" if residual > 0 else "low"
+        return (
+            f" The forecasts run {direction} by {abs(weighted):.3f} across the "
+            f"reliability bands below, weighted by the events in each, {consistency}."
+        )
+
+    if agree:
+        direction = "high" if weighted > 0 else "low"
+        return (
+            f" The forecasts run slightly {direction}, by {abs(weighted):.3f} — "
+            "small, but in the same direction in every populated band below."
+        )
+
     return (
-        f" The forecasts run {direction} on average, by {abs(residual):.3f} across "
-        "the reliability bands below, weighted by the events in each."
+        f" The bands below disagree in direction: {high} run high and {low} run "
+        "low, so the miss is dispersion rather than a shift."
     )
 
 
