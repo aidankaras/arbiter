@@ -35,7 +35,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from arbiter.ingestion.market import session_close_instant
 from arbiter.packets.hashing import content_hash
@@ -115,6 +115,37 @@ class MarketSummary(_Frozen):
     volume_percentile_63d: Decimal | None = None
 
 
+class InsiderExtract(_Frozen):
+    """The fields a Form 4 yields, typed.
+
+    Typed rather than carried in a `dict[str, str | int | Decimal | ...]`,
+    because a loose bag does not survive storage. The canonical form renders a
+    `Decimal` to a string so the digest is stable, and on reload that string is
+    indistinguishable from a value that was always a string — so `value_usd`
+    returned as `"50000"` rather than `Decimal("50000")`, and the packet hash
+    matched anyway, because both render identically. An arm doing arithmetic on
+    it would have concatenated. Declaring the field's type is what lets the
+    value be parsed back into the type it was written from.
+
+    The red-flag domain will need its own extract model, and `extracted` becomes
+    a union discriminated on `domain` when that domain's packets are built. It is
+    typed to this one until then rather than left loose, because a field that
+    accepts anything accepts the drift above.
+    """
+
+    insider_name: str
+    position: str
+    transaction_code: str
+    shares: Decimal
+    price: Decimal
+    value_usd: Decimal
+    #: Absent when the filing reports no post-transaction holding. That is a
+    #: statement that the filing does not say, which differs from a holding of
+    #: zero — an insider who has sold out entirely.
+    remaining_shares: Decimal | None = None
+    is_10b5_1: bool = False
+
+
 class FilingSection(_Frozen):
     """One titled section of the filing's text.
 
@@ -156,11 +187,9 @@ class EvidencePacket(_Frozen):
     as_of: datetime
     issuer: IssuerIdentity
     sections: tuple[FilingSection, ...] = ()
-    #: Fields a domain extractor pulled from the document. Typed loosely because
-    #: each domain reports different fields; typed at all because the hash
-    #: refuses anything without a stable textual form, so a float here fails
-    #: loudly at construction rather than producing a drifting identity.
-    extracted: dict[str, str | int | bool | Decimal | None] = Field(default_factory=dict)
+    #: The fields a domain extractor pulled from the document, typed so that a
+    #: stored packet reloads with the types it was written from.
+    extracted: InsiderExtract
     bars: tuple[SessionBar, ...] = ()
     market: MarketSummary = MarketSummary()
     comparables: tuple[Comparable, ...] = ()
@@ -203,10 +232,14 @@ class EvidencePacket(_Frozen):
         container reports a hash that no longer matches the one recorded with
         the prediction that cited it.
         """
-        return content_hash(self._hashable())
+        return content_hash(self.hashable_fields())
 
-    def _hashable(self) -> dict[str, Any]:
+    def hashable_fields(self) -> dict[str, Any]:
         """Render the packet in the plain form the digest is taken over.
+
+        Public because the packet store writes exactly these bytes: what is on
+        disk is then the same thing the identity was computed from, rather than
+        a second serialisation that could drift from it.
 
         `mode="python"` deliberately: it leaves `Decimal` and `datetime` as
         themselves, so the canonical form still sees the types it normalises.

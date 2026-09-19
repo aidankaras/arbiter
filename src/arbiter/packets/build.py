@@ -37,6 +37,7 @@ from arbiter.ingestion.market import Bar, closed_bars
 from arbiter.ingestion.timestamps import SEC_TIMEZONE
 from arbiter.packets.schema import (
     EvidencePacket,
+    InsiderExtract,
     IssuerIdentity,
     MarketSummary,
     SessionBar,
@@ -142,19 +143,28 @@ def market_summary(bars: Sequence[SessionBar]) -> MarketSummary:
     )
 
 
-#: Columns carried into `extracted` for the insider domain. Named explicitly
-#: rather than taking every column, so that adding a column to the event store
-#: cannot silently change what an arm sees and therefore every packet hash.
-_INSIDER_FIELDS = (
-    "insider_name",
-    "position",
-    "transaction_code",
-    "shares",
-    "price",
-    "value_usd",
-    "remaining_shares",
-    "is_10b5_1",
-)
+def _insider_extract(row: Mapping[str, Any]) -> InsiderExtract:
+    """Read the Form 4 fields out of a stored row.
+
+    Each field is named rather than the row being passed through whole. A row
+    carries storage bookkeeping an arm has no business seeing, and a column
+    added to the event store later would otherwise change every packet hash
+    without anyone deciding that it should.
+    """
+    return InsiderExtract(
+        insider_name=str(row["insider_name"]),
+        position=str(row["position"]),
+        transaction_code=str(row["transaction_code"]),
+        shares=Decimal(str(row["shares"])),
+        price=Decimal(str(row["price"])),
+        value_usd=Decimal(str(row["value_usd"])),
+        remaining_shares=(
+            None
+            if row.get("remaining_shares") is None
+            else Decimal(str(row["remaining_shares"]))
+        ),
+        is_10b5_1=bool(row["is_10b5_1"]),
+    )
 
 
 def build_packet(
@@ -163,7 +173,6 @@ def build_packet(
     *,
     domain: str,
     sector_etf: str,
-    fields: Sequence[str] = _INSIDER_FIELDS,
 ) -> EvidencePacket:
     """Assemble one packet from a stored event row and a price series.
 
@@ -176,7 +185,6 @@ def build_packet(
         domain: the event domain, which decides how the row is read.
         sector_etf: the benchmark this issuer's abnormal return is measured
             against, carried in the packet so a label stays interpretable.
-        fields: the row keys copied into `extracted`.
 
     Returns:
         A packet containing only what was knowable at the event instant.
@@ -199,7 +207,7 @@ def build_packet(
             sector_etf=sector_etf,
         ),
         sections=(),
-        extracted={key: row[key] for key in fields if key in row},
+        extracted=_insider_extract(row),
         bars=tuple(truncated),
         market=market_summary(truncated),
         comparables=(),

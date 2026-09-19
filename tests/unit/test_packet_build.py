@@ -106,8 +106,17 @@ def test_a_packet_carries_only_the_named_extracted_fields():
         sector_etf="XLP",
     )
 
-    assert "an_unrelated_new_column" not in packet.extracted
-    assert packet.extracted["transaction_code"] == "P"
+    assert not hasattr(packet.extracted, "an_unrelated_new_column")
+    assert packet.extracted.transaction_code == "P"
+
+
+def test_extracted_values_keep_their_types():
+    """A price an arm cannot do arithmetic on is evidence it cannot use."""
+    packet = build_packet(ROW, [_bar(10)], domain="insider", sector_etf="XLP")
+
+    assert packet.extracted.value_usd == Decimal("50000.00")
+    assert isinstance(packet.extracted.value_usd, Decimal)
+    assert packet.extracted.is_10b5_1 is False
 
 
 def test_adding_a_column_to_the_event_store_does_not_change_the_hash():

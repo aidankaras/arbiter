@@ -17,6 +17,7 @@ from arbiter.packets.schema import (
     Comparable,
     EvidencePacket,
     FilingSection,
+    InsiderExtract,
     IssuerIdentity,
     LookaheadError,
     MarketSummary,
@@ -28,6 +29,19 @@ from arbiter.packets.schema import (
 ACCEPTED = datetime(2026, 7, 13, 20, 47, tzinfo=UTC)
 
 ISSUER = IssuerIdentity(cik=764180, ticker="MO", company="Altria Group", sector_etf="XLP")
+
+
+def _extract(**overrides: object) -> InsiderExtract:
+    fields: dict[str, object] = {
+        "insider_name": "Jane Roe",
+        "position": "Officer",
+        "transaction_code": "P",
+        "shares": Decimal("1000"),
+        "price": Decimal("50.00"),
+        "value_usd": Decimal("50000.00"),
+    }
+    fields.update(overrides)
+    return InsiderExtract(**fields)  # pyright: ignore[reportArgumentType]
 
 
 def _bar(day: int) -> SessionBar:
@@ -47,6 +61,7 @@ def _packet(**overrides: object) -> EvidencePacket:
         "domain": "insider",
         "as_of": ACCEPTED,
         "issuer": ISSUER,
+        "extracted": _extract(),
         "bars": (_bar(10), _bar(13)),
     }
     fields.update(overrides)
@@ -130,22 +145,20 @@ def test_changing_any_evidence_changes_the_hash():
 
     assert _packet(bars=(_bar(10),)).content_hash != base
     assert _packet(domain="redflag").content_hash != base
-    assert _packet(extracted={"value_usd": Decimal("50000")}).content_hash != base
+    assert _packet(extracted=_extract(value_usd=Decimal("60000"))).content_hash != base
 
 
 def test_a_float_is_normalised_to_a_decimal_at_the_boundary():
-    """A float must never reach the digest, and here it cannot.
+    """A float must never reach the digest, and a typed field is where it stops.
 
-    The schema converts through the number's decimal spelling rather than its
-    binary value, so 0.1 is stored as exactly 0.1 and not as the expansion
-    0.1000000000000000055511151231257827 that `Decimal(0.1)` would give. The
-    hash is then taken over a value with one stable textual form, which is what
-    `hashing` refuses a raw float for.
+    The conversion goes through the number's decimal spelling rather than its
+    binary value, so 0.1 becomes exactly 0.1 and not the expansion
+    0.1000000000000000055511151231257827 that `Decimal(0.1)` would give.
     """
-    packet = _packet(extracted={"value_usd": 0.1})
+    packet = _packet(extracted=_extract(price=0.1))
 
-    assert packet.extracted["value_usd"] == Decimal("0.1")
-    assert packet.content_hash == _packet(extracted={"value_usd": Decimal("0.1")}).content_hash
+    assert packet.extracted.price == Decimal("0.1")
+    assert packet.content_hash == _packet(extracted=_extract(price=Decimal("0.1"))).content_hash
 
 
 def test_a_lookahead_failure_is_not_reported_as_a_validation_error():
@@ -189,8 +202,8 @@ def test_a_decimal_hashes_by_value_and_not_by_how_it_was_written():
     `1.5` would become two packets with two identities and two hashes, and every
     test over `hashing` would still pass.
     """
-    fifty = _packet(extracted={"value_usd": Decimal("50000.00")})
-    fifty_again = _packet(extracted={"value_usd": Decimal("50000")})
+    fifty = _packet(extracted=_extract(value_usd=Decimal("50000.00")))
+    fifty_again = _packet(extracted=_extract(value_usd=Decimal("50000")))
 
     assert fifty.content_hash == fifty_again.content_hash
 
