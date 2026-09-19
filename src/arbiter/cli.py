@@ -21,6 +21,7 @@ from arbiter.arms.evaluate import (
     load_days,
     stored_days,
 )
+from arbiter.arms.features import UnsupportedDomainError
 from arbiter.config import Settings, get_settings
 from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.resolution import HORIZONS, resolve_stored_day
@@ -152,8 +153,14 @@ def report(
         typer.echo(f"no labelled {domain} days under {root}; run `arbiter backfill`", err=True)
         raise typer.Exit(code=1)
 
-    loaded = load_days(store, domain, days)
-    evaluation = evaluate_baseline(loaded, train_fraction)
+    try:
+        # `load_days` is what raises: features are built as each day is read,
+        # so the call has to sit inside the handler rather than before it.
+        loaded = load_days(store, domain, days)
+        evaluation = evaluate_baseline(loaded, train_fraction)
+    except UnsupportedDomainError as exc:
+        typer.echo(f"the baseline arm cannot score '{domain}': {exc}", err=True)
+        raise typer.Exit(code=2) from None
 
     destination = Path(out) / f"baseline-{domain}.md"
     destination.parent.mkdir(parents=True, exist_ok=True)

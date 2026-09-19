@@ -23,7 +23,7 @@ from arbiter.evaluation.resolution import (
     sessions_after,
     window_closes_on,
 )
-from arbiter.ingestion.edgar import is_trading_day
+from arbiter.ingestion.edgar import UncoveredCalendarError, is_trading_day
 from arbiter.ingestion.timestamps import SEC_TIMEZONE
 
 
@@ -144,3 +144,23 @@ def test_the_window_the_calendar_approximation_produced_is_now_refused():
     _, end = plan_price_windows([event])["MO"]
 
     assert end > date(2026, 3, 14)
+
+
+def test_a_year_the_holiday_table_does_not_cover_is_refused():
+    """Answering would report every weekday holiday that year as a trading day.
+
+    Christmas 2024 fell on a Wednesday. A table listing only 2026 and 2027
+    called it open, and `sessions_after` walks that table to place every entry
+    and exit session — so the error would shift the session index of every event
+    whose window spanned it, in some years and not others.
+    """
+    with pytest.raises(UncoveredCalendarError, match="outside the holiday calendar"):
+        is_trading_day(date(2024, 12, 25))
+
+    with pytest.raises(UncoveredCalendarError):
+        is_trading_day(date(2028, 7, 4))
+
+
+def test_the_covered_years_are_answered_normally():
+    assert is_trading_day(date(2026, 12, 25)) is False
+    assert is_trading_day(date(2026, 3, 6)) is True

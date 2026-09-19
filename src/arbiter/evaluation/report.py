@@ -35,11 +35,70 @@ def _signed(value: float, places: int = 4) -> str:
     return f"{value:+.{places}f}"
 
 
+def _calibration_verdict(evaluation: Evaluation) -> str:
+    """State what the forecasts' stated probabilities were worth.
+
+    Reported beside discrimination rather than left in a table, because the two
+    fail independently and the reader who stops at "no measurable skill" would
+    otherwise take a forecast that is actively worse than a constant as merely
+    uninformative.
+    """
+    skill = evaluation.brier_skill
+    if math.isnan(skill):
+        return ""
+    if skill > 0:
+        return (
+            f" The stated probabilities are worth slightly more than the base rate "
+            f"(Brier skill {skill:+.4f}), which is a weaker claim than discrimination "
+            "and should be read as one."
+        )
+    if skill == 0:
+        return (
+            " The stated probabilities are worth exactly what forecasting the base "
+            f"rate of {evaluation.base_rate:.1%} for every event would have been "
+            "(Brier skill 0), so they carry no information beyond it."
+        )
+    return (
+        f" Calibration is worse than that: a Brier skill of {skill:+.4f} means "
+        f"the stated probabilities were less useful than forecasting the base "
+        f"rate of {evaluation.base_rate:.1%} for every event." + _bias_direction(evaluation)
+    )
+
+
+def _bias_direction(evaluation: Evaluation) -> str:
+    """Describe which way the forecasts miss, measured rather than assumed.
+
+    A negative Brier skill says the probabilities were worse than a constant; it
+    carries no direction. Taking one from the sign alone stated the opposite of
+    what the first published report showed, so the direction is computed from
+    the reliability bands, weighted by the events in each.
+    """
+    counted = [band for band in evaluation.calibration if band.count]
+    if not counted:
+        return ""
+
+    events = sum(band.count for band in counted)
+    residual = sum((band.forecast - band.realised) * band.count for band in counted) / events
+    if abs(residual) < 0.005:
+        return (
+            " The reliability table below shows no consistent direction to the "
+            "miss: the bands are wrong in both directions rather than shifted."
+        )
+    direction = "high" if residual > 0 else "low"
+    return (
+        f" The forecasts run {direction} on average, by {abs(residual):.3f} across "
+        "the reliability bands below, weighted by the events in each."
+    )
+
+
 def _verdict(evaluation: Evaluation) -> str:
     """State plainly whether the measurement supports a claim of skill.
 
     Written as a sentence rather than left to the reader, because a table of
-    statistics invites the most flattering reading of itself.
+    statistics invites the most flattering reading of itself. Discrimination and
+    calibration are both stated: a forecast can rank well while being badly
+    calibrated, or rank at chance while being honest about its uncertainty, and
+    reporting only the first lets the second failure pass unremarked.
     """
     ic = evaluation.ic
     if math.isnan(ic.t_statistic):
@@ -55,6 +114,7 @@ def _verdict(evaluation: Evaluation) -> str:
             f"the conventional threshold. With {ic.days} scored days this is the "
             "expected outcome whether or not an edge exists; it is a statement "
             "about the sample, not evidence that no signal is there."
+            + _calibration_verdict(evaluation)
         )
     direction = "positive" if ic.mean > 0 else "negative"
     return (
@@ -63,6 +123,7 @@ def _verdict(evaluation: Evaluation) -> str:
         f"{ic.days} days. This clears the conventional two-standard-error "
         "threshold, which is a weak bar: it is one test on one sample, and the "
         "estimate should be expected to shrink as more days are added."
+        + _calibration_verdict(evaluation)
     )
 
 

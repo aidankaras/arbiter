@@ -24,6 +24,9 @@ dependencies = [
     "scipy>=1.14",
     "pyarrow>=18.0",
     "edgartools>=5.58.0",
+    # Imported unconditionally by the baseline arm, which ships; a base install
+    # without it cannot run `arbiter report`.
+    "scikit-learn>=1.6",
 ]
 
 [project.optional-dependencies]
@@ -39,7 +42,6 @@ llm = [
     "langgraph>=0.2.50",
 ]
 ml = [
-    "scikit-learn>=1.6",
     "xgboost>=2.1",
     "torch>=2.5",
     "transformers>=4.47",

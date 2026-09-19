@@ -128,6 +128,18 @@ def event_features(row: Mapping[str, Any], insiders_same_issuer: int) -> dict[st
     }
 
 
+class UnsupportedDomainError(NotImplementedError):
+    """Raised when features are requested for a domain that has none.
+
+    The baseline arm reads Form 4 fields — a transaction code, a price, an
+    insider's title. A current report carries none of them, so the red-flag
+    domain needs its own feature set built against what an 8-K actually says:
+    which items were triggered, whether a press release accompanied it, and how
+    much the filing says. Until that exists the arm cannot score the domain, and
+    saying so is better than a `KeyError` from a field that was never there.
+    """
+
+
 def day_features(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, float]]:
     """Return features for every event of one day, in the order given.
 
@@ -136,7 +148,19 @@ def day_features(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, float]]:
     on the same day is a stronger signal than any of them alone, and counting
     distinct insiders rather than filings keeps one person's several rows from
     reading as a crowd.
+
+    Raises:
+        UnsupportedDomainError: the rows carry no Form 4 fields, as red-flag
+            events do not, so this arm has no features defined for them.
     """
+    if rows and "insider_name" not in rows[0]:
+        present = ", ".join(sorted(rows[0]))
+        msg = (
+            "these events carry no Form 4 fields, so the baseline arm has no "
+            f"features for them; the row holds: {present}"
+        )
+        raise UnsupportedDomainError(msg)
+
     insiders_by_issuer: dict[int, set[str]] = {}
     for row in rows:
         insiders_by_issuer.setdefault(int(row["cik"]), set()).add(str(row["insider_name"]))

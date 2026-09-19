@@ -4,12 +4,9 @@ import json
 from datetime import date
 from pathlib import Path
 
-import pytest
-
 from arbiter.events.insider import UnpriceableIssuerError
 from arbiter.ingestion.pipeline import (
     _PARSE_FAILURES,
-    SystemicParseFailureError,
     _quarantine,
 )
 
@@ -34,20 +31,35 @@ def test_a_few_bad_filings_are_recorded_with_their_accession_numbers(tmp_path: P
     assert "Ticker" in stored[0]["error"]
 
 
-def test_a_day_that_mostly_failed_is_refused(tmp_path: Path):
-    """Ten percent failing is a format or client break; the day is not recorded."""
+def test_a_day_that_mostly_failed_is_reported_as_broken(tmp_path: Path):
+    """Ten percent failing is a format or client break, not a few odd filers.
+
+    Reported rather than raised: every domain is judged before any of them stops
+    the day, so a day broken in both is not described as broken in one.
+    """
     rejected = [{"accession_no": f"a-{i}", "error": "unparseable"} for i in range(10)]
 
-    with pytest.raises(SystemicParseFailureError, match="format or client breakage"):
-        _quarantine(rejected, tmp_path, "insider", DAY, attempted=100)
+    breakage = _quarantine(rejected, tmp_path, "insider", DAY, attempted=100)
+
+    assert breakage is not None
+    assert "10 of 100 insider filings" in breakage
 
 
-def test_the_refusal_names_the_quarantine_file(tmp_path: Path):
+def test_a_healthy_day_reports_no_breakage(tmp_path: Path):
+    """The negative control: a clean day must return nothing to report."""
+    rejected = [{"accession_no": "a-1", "error": "unparseable"}]
+
+    assert _quarantine(rejected, tmp_path, "insider", DAY, attempted=100) is None
+
+
+def test_the_report_names_the_quarantine_file(tmp_path: Path):
     """The operator needs to know where to look, not just that something broke."""
     rejected = [{"accession_no": f"a-{i}", "error": "unparseable"} for i in range(10)]
 
-    with pytest.raises(SystemicParseFailureError, match="rejected"):
-        _quarantine(rejected, tmp_path, "insider", DAY, attempted=100)
+    breakage = _quarantine(rejected, tmp_path, "insider", DAY, attempted=100)
+
+    assert breakage is not None
+    assert "rejected" in breakage
 
 
 def test_a_day_with_no_filings_at_all_does_not_divide_by_zero(tmp_path: Path):
@@ -76,5 +88,4 @@ def test_excluding_unlistable_issuers_does_not_hide_a_real_break(tmp_path: Path)
     """
     rejected = [{"accession_no": f"a-{i}", "error": "unparseable"} for i in range(10)]
 
-    with pytest.raises(SystemicParseFailureError):
-        _quarantine(rejected, tmp_path, "insider", DAY, attempted=130 - 30)
+    assert _quarantine(rejected, tmp_path, "insider", DAY, attempted=130 - 30) is not None

@@ -6,6 +6,7 @@ the opposite behaviour: an estimate indistinguishable from zero has to say so
 in words, and every figure needed to judge the estimate has to appear beside it.
 """
 
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -134,3 +135,74 @@ def test_the_same_evaluation_renders_identically():
     assert render_baseline_report(evaluation, GENERATED) == render_baseline_report(
         evaluation, GENERATED
     )
+
+
+def test_a_forecast_worse_than_the_base_rate_is_said_so_in_the_verdict():
+    """Discrimination and calibration fail independently.
+
+    A reader who stops at "no measurable skill" would otherwise take a forecast
+    that is actively worse than a constant as merely uninformative. A real run
+    produced an information coefficient indistinguishable from zero alongside a
+    Brier skill of -0.22.
+    """
+    evaluation = _evaluation(0.004, 0.011, 0.36)
+    worse = replace(evaluation, brier_skill=-0.2224)
+
+    rendered = render_baseline_report(worse, GENERATED)
+    verdict = rendered.split("## What this rests on")[0]
+
+    assert "less useful than forecasting the base rate" in verdict
+    assert "-0.2224" in verdict
+
+
+def test_a_positive_brier_skill_is_still_qualified_in_the_verdict():
+    better = replace(_evaluation(0.004, 0.011, 0.36), brier_skill=0.0130)
+
+    verdict = render_baseline_report(better, GENERATED).split("## What this rests on")[0]
+
+    assert "weaker claim than discrimination" in verdict
+
+
+def test_the_direction_of_a_miscalibration_is_measured_not_assumed():
+    """A negative Brier skill carries no direction; taking one from it was wrong.
+
+    The first published report had forecasts running *low* — a band forecasting
+    0.273 realised 0.831 — while the verdict asserted they ran high.
+    """
+    low = replace(
+        _evaluation(0.004, 0.011, 0.36),
+        brier_skill=-0.04,
+        calibration=[
+            CalibrationBin(lower=0.2, upper=0.3, forecast=0.273, realised=0.831, count=65),
+            CalibrationBin(lower=0.4, upper=0.5, forecast=0.457, realised=0.452, count=1003),
+        ],
+    )
+
+    verdict = render_baseline_report(low, GENERATED).split("## What this rests on")[0]
+
+    assert "run low" in verdict
+    assert "run high" not in verdict
+
+
+def test_forecasts_that_run_high_are_described_as_such():
+    high = replace(
+        _evaluation(0.004, 0.011, 0.36),
+        brier_skill=-0.04,
+        calibration=[
+            CalibrationBin(lower=0.7, upper=0.8, forecast=0.750, realised=0.300, count=400),
+        ],
+    )
+
+    verdict = render_baseline_report(high, GENERATED).split("## What this rests on")[0]
+
+    assert "run high" in verdict
+
+
+def test_exactly_zero_skill_is_not_called_better_than_the_base_rate():
+    """It falls in neither branch by sign, and was previously read as positive."""
+    neutral = replace(_evaluation(0.004, 0.011, 0.36), brier_skill=0.0)
+
+    verdict = render_baseline_report(neutral, GENERATED).split("## What this rests on")[0]
+
+    assert "worth exactly what forecasting the base rate" in verdict
+    assert "worth slightly more" not in verdict
