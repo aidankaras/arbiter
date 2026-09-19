@@ -121,14 +121,35 @@ depends on trading halts concentrates on exactly the bad news being measured.
 When you find a data-handling bug, the question is not "how big" but "is it
 correlated with the outcome".
 
+The sharpest instance so far withdrew a published report. One transaction filed
+by three joint owners was stored as three events, and joint filing is how funds,
+groups and ten-percent owners file while officers file alone — so the
+over-weighting tracked filer type, which is the property the study asks the data
+to discriminate on. A second, older defect stored a filing's single qualifying
+transaction once per line on the form, inflating the event store by a factor
+averaging 2.94 and ranging from 2.34 to 4.59 across days. Both produced
+plausible datasets; the second was found only because a day's packets yielded
+fewer distinct hashes than packets.
+
 **A test must not restate the implementation.** A twenty-case parameterised
 test written to guard the window bug asserted that the window reached the
 expression the window is computed from — it read `x >= x` and passed on the
 defect. Derive a property from the requirement, never from the code. Prove a
 regression test bites by replaying the old behaviour.
 
-**Unit tests here have never caught a real defect.** Every one surfaced in a
-live run. Run `pytest -m integration` before believing anything works.
+**Hand-built fixtures encode what a filing was assumed to contain.** Every
+ingestion defect found here surfaced in a live run rather than in a test, and
+that is the reason: a test that constructs a Form 4 table tests the shape its
+author already had in mind, and the filings that break things have the shape
+nobody anticipated — several transactions of which one clears the threshold,
+one transaction reported once per joint owner, a conversion carrying no price.
+
+`tests/unit/test_form4_contract.py` reads tables recorded from EDGAR and
+committed under `tests/fixtures/form4/`, with each filing's expected event count
+pinned. Add a fixture with `tests/fixtures/form4/record.py` whenever a filing
+exhibits a shape the suite does not cover, and name in the test what that shape
+is. A diff in a fixture is a change in the upstream contract and is reviewed as
+one, never refreshed away.
 
 An early mutation audit reported 9 of 22 semantic mutations surviving the suite,
 and that figure is no longer cited because the mutations behind it were never
