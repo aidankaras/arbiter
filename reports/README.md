@@ -16,6 +16,12 @@ standard error on an information coefficient is large enough that no result
 should be read as settled, and the report says so in words rather than leaving a
 table to be interpreted generously.
 
+`redflag-population.md` — why the red-flag domain has no baseline arm yet. The
+screened population is 94% officer transitions, while the restatements and
+auditor changes the literature associates with large abnormal returns are 1%
+and 5.6% of it. The pipeline works for this domain; the population cannot
+support the measurement.
+
 ## What is planned
 
 A weekly research log covering events processed, per-arm performance, where the
