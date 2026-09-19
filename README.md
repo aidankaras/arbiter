@@ -18,14 +18,22 @@ decision provenance and per-decision cost accounting.
 >
 > Working today: EDGAR ingestion for Form 4 and 8-K, event extraction for the
 > insider and red-flag domains, a date-partitioned event store, market data,
-> abnormal-return labels, a resumable historical backfill, the baseline
-> forecasting arm, out-of-sample evaluation by information coefficient and
-> calibration, an append-only ledger, and spend metering.
+> abnormal-return labels, a resumable historical backfill, content-hashed
+> evidence packets with point-in-time enforcement, the baseline forecasting arm,
+> out-of-sample evaluation by information coefficient and calibration, an
+> append-only ledger, and spend metering.
 >
-> Designed but not built: the evidence packet builder, the three language-model
-> arms, the dashboard, and the paper portfolios. Sections describing those use
-> the future tense; anything in the present tense refers to code in this
-> repository. Paper trading only, always.
+> Designed but not built: comparable retrieval, the three language-model arms,
+> the dashboard, and the paper portfolios. Sections describing those use the
+> future tense; anything in the present tense refers to code in this repository.
+> Paper trading only, always.
+>
+> **No measurement currently stands.** The first baseline result was withdrawn
+> on 2026-09-19 after the event store was found to hold duplicated rows from two
+> separate causes, both since fixed and pinned by contract tests over recorded
+> filings. `reports/baseline-insider.md` records what was claimed and why it no
+> longer holds. A replacement is computed from re-ingested data rather than
+> edited into the old one.
 
 ## Quickstart
 

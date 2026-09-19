@@ -6,15 +6,20 @@ rather than an edit to the old one.
 
 ## What is here now
 
-`baseline-insider.md` — the conventional arm measured out of sample, written by
-`arbiter report`. It states the information coefficient with its standard error,
-the sample the estimate rests on, the calibration of its stated probabilities,
-and the fitted weights.
+`baseline-insider.md` — **withdrawn 2026-09-19; no figure in it should be
+cited.** The event store it was computed from held duplicated rows, from two
+separate causes. A filing's single qualifying transaction had been stored once
+per line on its form, inflating events by a factor averaging 2.94 across days
+and ranging from 2.34 to 4.59. Separately, one transaction filed by several
+joint reporting owners was counted once per owner — an over-weighting that
+tracked filer type, since funds and large holders file jointly while officers
+file alone.
 
-Read the verdict at the top before the tables. Over a few dozen days the
-standard error on an information coefficient is large enough that no result
-should be read as settled, and the report says so in words rather than leaving a
-table to be interpreted generously.
+Both causes are fixed and pinned by contract tests over recorded filings. The
+report is kept rather than deleted so that what was claimed at its commit stays
+inspectable, which is the same reason results are committed at all. It will be
+replaced by a new report computed from re-ingested data rather than edited in
+place.
 
 `redflag-population.md` — why the red-flag domain has no baseline arm yet. The
 screened population is 94% officer transitions, while the restatements and
