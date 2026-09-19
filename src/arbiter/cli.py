@@ -133,6 +133,51 @@ def resolve(
     typer.echo(f"labels-{domain}: {written}")
 
 
+@app.command(name="build-packets")
+def build_packets(
+    day: str,
+    root: str = "data/events",
+    packet_root: str = "data/packets",
+) -> None:
+    """Build one stored day's evidence packets.
+
+    A packet is built for every stored event, not only for events whose outcome
+    has resolved. A packet records what was knowable at the filing, and whether
+    its label exists yet is a fact about the calendar — so this pass reads the
+    event store and never the label store, and its output does not depend on
+    when it was run.
+
+    Events with no tradeable symbol, or whose issuer returned no price history,
+    are reported here rather than silently absent from the day.
+    """
+    from arbiter.packets.pipeline import UnsupportedPacketDomainError, build_day
+
+    today = current_session_date()
+
+    def fetch(symbols: Sequence[str], start: date, end: date) -> dict[str, list[Bar]]:
+        return daily_bars_tolerating_gaps(list(symbols), start, end, today)
+
+    try:
+        written, excluded = build_day(
+            date.fromisoformat(day),
+            Path(root),
+            Path(packet_root),
+            fetch_bars=fetch,
+            benchmark_for=benchmark_for_issuer,
+        )
+    except UnsupportedPacketDomainError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+
+    typer.echo(f"packets: {written}")
+    if excluded:
+        typer.echo(f"excluded: {len(excluded)}")
+        for record in excluded[:10]:
+            typer.echo(f"  {record['accession_no']}: {record['reason']}")
+        if len(excluded) > 10:
+            typer.echo(f"  ... and {len(excluded) - 10} more")
+
+
 @app.command()
 def report(
     domain: str = "insider",
