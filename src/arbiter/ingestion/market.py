@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from typing import Any
 
@@ -105,6 +105,56 @@ class Bar:
     low: Decimal
     close: Decimal
     volume: Decimal
+
+
+#: The regular-session close in the market's own timezone. Held as a local time
+#: rather than a UTC offset because the offset moves twice a year: 16:00 Eastern
+#: is 20:00 UTC under daylight time and 21:00 UTC under standard time.
+_REGULAR_CLOSE = time(16, 0)
+
+
+def session_close_instant(session: date) -> datetime:
+    """Return the instant a session's closing price became public.
+
+    Args:
+        session: the calendar date of the session, in the market's timezone.
+
+    Returns:
+        The close as a timezone-aware UTC instant.
+
+    Early closes are not modelled. The half-days around Thanksgiving and
+    Christmas close at 13:00 Eastern, and this reports 16:00 for them, so a
+    caller asking what was knowable at 14:00 Eastern on such a day is told
+    "not yet" about a price that had in fact printed. That direction is
+    deliberate: withholding a published bar weakens the evidence in a packet,
+    whereas admitting an unclosed one falsifies it.
+    """
+    return datetime.combine(session, _REGULAR_CLOSE, tzinfo=SEC_TIMEZONE).astimezone(UTC)
+
+
+def closed_bars(bars: Sequence[Bar], as_of: datetime) -> list[Bar]:
+    """Return the bars whose closing price had been published by `as_of`.
+
+    This is the truncation that makes a packet a point-in-time statement, and it
+    is not the complement of `entry_sessions`. That function asks which sessions
+    an event could still trade, so it selects sessions beginning after `as_of`.
+    This asks which sessions an event could already read, which requires the
+    session to have *ended* by then. A filing accepted at 10:00 Eastern falls
+    between the two: its own session has begun, so it is not tradeable from the
+    open, and has not closed, so its return is not knowable. Both answers
+    exclude it, for different reasons.
+
+    Args:
+        bars: daily bars, each timestamped at its session's start as the vendor
+            publishes them.
+        as_of: the instant the packet describes. Must be timezone-aware; a naive
+            value would be compared against an aware one and raise.
+    """
+    return [
+        bar
+        for bar in bars
+        if session_close_instant(bar.timestamp.astimezone(SEC_TIMEZONE).date()) <= as_of
+    ]
 
 
 def _decimal(value: Any) -> Decimal:
