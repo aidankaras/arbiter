@@ -103,6 +103,11 @@ jobs:
         # the actions above are: the scanner runs before anything else has
         # inspected the tree, so its own provenance has to be the one thing not
         # taken on trust.
+        #
+        # The first run of this step read 69 commits and 860 KB. That figure is
+        # recorded because a green from a scan that read everything and a green
+        # from one that read nothing are the same word on the summary page, and
+        # the difference is only visible in a log that expires.
         env:
           GITLEAKS_VERSION: "8.24.3"
           GITLEAKS_SHA256: "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c"
