@@ -8,7 +8,7 @@ Generated 2026-09-19 from the event store.
 
 ## Result
 
-**No measurable skill.** The mean information coefficient is +0.0308 against a standard error of 0.0581 (t = +0.53), which is indistinguishable from zero at the conventional threshold. With 11 scored days this is the expected outcome whether or not an edge exists; it is a statement about the sample, not evidence that no signal is there. Calibration is worse than that: a Brier skill of -0.0367 means the stated probabilities were less useful than forecasting the base rate of 46.2% for every event. The forecasts run low on average, by 0.011 across the reliability bands below, weighted by the events in each.
+**No measurable skill.** The mean information coefficient is +0.0308 against a standard error of 0.0581 (t = +0.53), which is indistinguishable from zero at the conventional threshold. With 11 scored days this is the expected outcome whether or not an edge exists; it is a statement about the sample, not evidence that no signal is there. Calibration is worse than that: a Brier skill of -0.0367 means the stated probabilities were less useful than forecasting the base rate of 46.2% for every event. The forecasts run low by 0.011 across the reliability bands below, weighted by the events in each, on balance, with 2 of 6 bands running the other way.
 
 ## What this rests on
 

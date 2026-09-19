@@ -206,3 +206,41 @@ def test_exactly_zero_skill_is_not_called_better_than_the_base_rate():
 
     assert "worth exactly what forecasting the base rate" in verdict
     assert "worth slightly more" not in verdict
+
+
+def test_bands_agreeing_on_a_small_miss_are_not_called_contradictory():
+    """A small aggregate can mean agreement, so the sign of each band is read.
+
+    Two bands each running +0.004 high average to 0.004 — under the threshold
+    for naming a shift, but they do not disagree, and saying they did would
+    repeat the error this function was written to fix, one level down.
+    """
+    agreeing = replace(
+        _evaluation(0.004, 0.011, 0.36),
+        brier_skill=-0.01,
+        calibration=[
+            CalibrationBin(lower=0.4, upper=0.5, forecast=0.454, realised=0.450, count=500),
+            CalibrationBin(lower=0.5, upper=0.6, forecast=0.554, realised=0.550, count=500),
+        ],
+    )
+
+    verdict = render_baseline_report(agreeing, GENERATED).split("## What this rests on")[0]
+
+    assert "same direction in every populated band" in verdict
+    assert "disagree in direction" not in verdict
+
+
+def test_bands_that_genuinely_disagree_are_reported_as_dispersion():
+    mixed = replace(
+        _evaluation(0.004, 0.011, 0.36),
+        brier_skill=-0.01,
+        calibration=[
+            CalibrationBin(lower=0.2, upper=0.3, forecast=0.25, realised=0.60, count=500),
+            CalibrationBin(lower=0.7, upper=0.8, forecast=0.75, realised=0.40, count=500),
+        ],
+    )
+
+    verdict = render_baseline_report(mixed, GENERATED).split("## What this rests on")[0]
+
+    assert "disagree in direction" in verdict
+    assert "dispersion rather than a shift" in verdict
