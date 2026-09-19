@@ -56,6 +56,11 @@ Concretely:
 
 ## Reporting standards for anyone dispatching or reviewing work here
 
+Most of these describe one failure: **a check that passes without having run.** The
+test for whether a rule belongs here is to ask what the check would print if it had
+never happened. If that is the same thing it prints on success, it belongs, because
+nothing downstream can tell the two apart.
+
 - **A claimed test count is verified, not trusted.** Run `uv run pytest tests/unit -q`
   and read the tail line before treating any "N passed" as done. A report is the only
   evidence a reviewer has unless they rerun the suite themselves, and this project has
@@ -75,6 +80,17 @@ Concretely:
   find . -name __pycache__ -type d -prune -exec rm -rf {} +
   uv run pytest tests/unit -q -p no:cacheprovider
   ```
+- **A comment explaining *why* is a second claim, and the tests do not check it.**
+  A passing suite confirms the conclusion and says nothing about the reason given for
+  it, so an explanation can be wrong in a file that is entirely correct — and it is
+  read by the next person as though it had been verified. This has already happened
+  here: a docstring justified hashing the packet in Python mode on the grounds that
+  JSON mode "would turn every price into a float", which is false. JSON mode renders a
+  `Decimal` to a string and loses no precision. The decision was right for a different
+  reason — it renders before the canonical form can normalise, so `1.50` and `1.5`
+  become two identities — and the stated reason would have taught a reader something
+  untrue about the serialiser. When a comment explains a mechanism, check the
+  mechanism.
 - **Planning documents live outside this repository.** The spec and phase plans are kept
   under `~/.claude/references/arbiter/`, never in this tree, so that planning context
   never reaches a public reader. Design reasoning that belongs to the system goes in
