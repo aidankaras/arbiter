@@ -16,15 +16,19 @@ env:
   # Supplied so configuration validation can run without repository secrets.
   SEC_USER_AGENT: "arbiter-ci ci@example.com"
 
+# Every action below is pinned to a commit, with its tag in a trailing comment.
+# A tag is a movable pointer: the code that ran last week under `@v6` is not
+# necessarily the code that runs today. Each SHA is resolved from the upstream
+# repository at the time it is written, never copied from another workflow.
 jobs:
   quality:
     name: lint, types, tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.1.0
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
 
@@ -50,10 +54,10 @@ jobs:
     name: dependency audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v10.1.0
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4  # v10.1.0
         with:
           enable-cache: true
 
@@ -79,29 +83,72 @@ jobs:
     name: secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
-          # gitleaks needs history to scan commits, not just the working tree.
+          # The scan below reads every commit, so the full history has to be
+          # present. A shallow checkout would silently narrow it to one commit.
           fetch-depth: 0
 
-      - name: Scan for committed secrets
-        uses: gitleaks/gitleaks-action@v3
+      - name: Scan every commit for secrets
+        # gitleaks is invoked directly rather than through its action, which
+        # derives a scan range from the push event and passes it as `--log-opts`.
+        # That range is the commits in the push: on a representative run this job
+        # read 2 commits and 11 KB while the repository held 49 commits and 1.08
+        # MB, so it reported "no leaks detected" having never looked at 98% of the
+        # history. A secret committed before this job existed, or on any push
+        # whose range excluded it, would stay green forever — a check that passes
+        # for a reason unrelated to what it claims to verify.
+        #
+        # The release archive is pinned by digest, not by tag, for the same reason
+        # the actions above are: the scanner runs before anything else has
+        # inspected the tree, so its own provenance has to be the one thing not
+        # taken on trust.
+        #
+        # The first run of this step read 69 commits and 860 KB. That figure is
+        # recorded because a green from a scan that read everything and a green
+        # from one that read nothing are the same word on the summary page, and
+        # the difference is only visible in a log that expires.
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: "8.24.3"
+          GITLEAKS_SHA256: "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c"
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 3 -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict
+          tar -xzf "$archive" gitleaks
+
+          # `detect --source .` walks the whole commit graph. No --log-opts: any
+          # narrowing here is the defect this step was rewritten to remove.
+          ./gitleaks detect \
+            --source . \
+            --redact \
+            --no-banner \
+            --report-format sarif \
+            --report-path gitleaks.sarif
+
+      - name: Publish the findings when the scan fails
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: gitleaks-findings
+          path: gitleaks.sarif
+          if-no-files-found: ignore
 
   container:
     name: container build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
       # The default docker driver cannot export a build cache. buildx provides
       # the docker-container driver that the GitHub Actions cache backend needs.
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
 
       - name: Build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6
         with:
           context: .
           target: runtime
