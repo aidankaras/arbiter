@@ -119,6 +119,35 @@ def test_the_window_starts_before_the_filing_so_the_entry_session_is_inside_it()
     assert start < event.as_of.date()
 
 
+def test_the_window_reaches_back_far_enough_for_the_history_a_packet_describes():
+    """One window serves labelling and packet construction, so it must span both.
+
+    Counted in sessions from the market calendar rather than compared against
+    the constant the window is built from, which would assert the code against
+    itself. The requirement is the packet's longest backward statistic: a volume
+    percentile ranked over 63 sessions.
+
+    A filing late in the year is used so the whole span stays inside the years
+    the holiday table covers; the production window deliberately does not count
+    sessions backwards, precisely because an early-January event would reach
+    into a year the table does not list.
+    """
+    event = _event(datetime(2026, 8, 3, 20, 47, tzinfo=UTC))
+
+    start, _ = plan_price_windows([event])["MO"]
+
+    sessions = sum(
+        1
+        for offset in range((event.as_of.date() - start).days)
+        if is_trading_day(start + timedelta(days=offset))
+    )
+
+    assert sessions >= 63, (
+        f"{sessions} sessions between {start} and {event.as_of.date()}; a packet's "
+        "volume percentile ranks over 63"
+    )
+
+
 def test_one_window_per_symbol_still_covers_every_events_horizon():
     """Merging windows must widen them, never clip one to fit another."""
     early = _event(datetime(2026, 3, 2, 23, 0, tzinfo=UTC))

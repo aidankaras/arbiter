@@ -38,9 +38,28 @@ HORIZONS = {"insider": 5, "redflag": 20}
 #: slightly too long costs nothing but a few unused bars.
 _WINDOW_SLACK_SESSIONS = 3
 
-#: Sessions of price history fetched before the first event, so the entry
-#: session that follows a filing is always inside the window.
-_LEAD_DAYS = 5
+#: Calendar days of price history fetched before an event.
+#:
+#: Sized by the longest backward window any consumer needs, which is the packet's
+#: 63-session volume percentile rather than labelling's own requirement of one
+#: entry session. One window serving both is what keeps packet construction from
+#: needing a second pass over the same symbols: the binding cost here is requests
+#: per minute, not bytes per request, so a wider range is very nearly free while
+#: a second request per symbol is not.
+#:
+#: Counted in calendar days rather than against the market calendar on purpose.
+#: Counting 63 sessions backwards from early January would reach into a year the
+#: holiday table does not cover and raise; and it is unnecessary, because the
+#: bars returned are themselves the trading calendar — every consumer works from
+#: the sessions it actually receives. 63 sessions span 88 calendar days of
+#: weekends alone, so this leaves room for the holidays too, and an over-long
+#: window costs nothing but unused bars.
+_LEAD_DAYS = 120
+
+#: The backward history a packet needs, in sessions. Stated here because it is
+#: what `_LEAD_DAYS` is sized from; the packet builder reports an absent
+#: statistic rather than a wrong one if it receives fewer.
+_PACKET_HISTORY_SESSIONS = 63
 
 
 @dataclass(frozen=True)
@@ -120,6 +139,11 @@ def plan_price_windows(
     A day's filings concentrate in far fewer issuers than events, and each
     window covers every event for its symbol, so the number of price requests
     follows the number of distinct symbols rather than the number of events.
+
+    The window spans both directions a consumer reads in: backwards far enough
+    for the history a packet describes, forwards past the session the horizon
+    closes on. Splitting it would double the requests for the same symbols, and
+    requests are the constrained resource.
     """
     windows: dict[str, tuple[date, date]] = {}
     for event in events:
