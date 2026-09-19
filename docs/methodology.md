@@ -46,9 +46,41 @@ meaningful.
 
 Each event produces exactly one packet, which is immutable and content-hashed.
 
-Contents: the filing's sectioned text, issuer identity and classification, market
-context truncated at the event timestamp, strategy-specific extracted fields, and
-comparable historical cases.
+Contents: the filing's sectioned text, issuer identity and the sector benchmark
+its return is measured against, the daily bars that had closed by the event
+timestamp, a few descriptive statistics over those bars, the fields a domain
+extractor pulled from the document, and comparable historical cases.
+
+Comparable retrieval is not built. The packet carries the field and the schema
+enforces its as-of constraint, but nothing populates it yet, so every packet
+currently holds an empty list. This is stated because an empty field and an
+unbuilt feature are indistinguishable from the outside, and they must not become
+indistinguishable once retrieval exists: an empty list will then mean "searched
+and found none" rather than "never searched".
+
+### What the packet deliberately omits
+
+The packet does not carry the features the conventional arm is fitted on, and
+this is a decision about what is being measured rather than an implementation
+detail. Supplying that feature vector to every arm would change the question from
+*given identical evidence, which approach forecasts better?* to *given identical
+features, which approach maps them to a forecast better?* Those are different
+claims, and only the first is the one this project sets out to test. It would
+also foreclose the single mechanism by which a language model might add anything:
+using something the feature set leaves out.
+
+The descriptive statistics — a trailing return, a realised volatility, a volume
+percentile — are included for the opposite reason. A model asked to derive a
+trailing return from sixty rows of prices is being measured on arithmetic rather
+than on judgement, and arithmetic is not the capability under test. They are kept
+few and deliberately descriptive, so that neither arm inherits the other's
+hypothesis about which facts matter.
+
+Each statistic is absent rather than zero when its window holds too little
+history. A zero trailing return asserts that the stock did not move, which is a
+different claim from having too short a history to say.
+
+### Enforced properties
 
 Three properties are enforced in code rather than by convention:
 
@@ -59,6 +91,17 @@ and any change to packet construction is detectable rather than silent.
 **Information truncation.** Market context is computed from data available at the
 event timestamp. Price windows, volatility estimates, and volume statistics all
 terminate there.
+
+The boundary is the session *close*, not the session date. A bar belongs in a
+packet once its closing price has been published, so a filing accepted at 10:00
+Eastern may not read the session it arrived in: that session has begun and has
+not ended, and its return does not yet exist. The close is derived in the
+market's own timezone, because 16:00 Eastern is 20:00 UTC under daylight saving
+and 21:00 UTC outside it; a fixed offset would admit an unclosed bar for any
+filing accepted in that hour, and only between November and March. Scheduled
+early closes are not modelled, so a half-day session is withheld slightly longer
+than it needed to be — a packet missing a bar is weaker evidence, while a packet
+holding an unclosed one is false evidence.
 
 **No downstream fetching.** The three forecasting arms that consume a packet
 receive no capability to retrieve anything else. The agent analyst is constructed
