@@ -153,8 +153,10 @@ def report(
         typer.echo(f"no labelled {domain} days under {root}; run `arbiter backfill`", err=True)
         raise typer.Exit(code=1)
 
-    loaded = load_days(store, domain, days)
     try:
+        # `load_days` is what raises: features are built as each day is read,
+        # so the call has to sit inside the handler rather than before it.
+        loaded = load_days(store, domain, days)
         evaluation = evaluate_baseline(loaded, train_fraction)
     except UnsupportedDomainError as exc:
         typer.echo(f"the baseline arm cannot score '{domain}': {exc}", err=True)

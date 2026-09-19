@@ -4,11 +4,11 @@ Logistic regression on filing characteristics, forecasting the sign of the
 five-session abnormal return. This is the control the language-model arms
 are measured against, not a proposed strategy.
 
-Generated 2026-09-18 from the event store.
+Generated 2026-09-19 from the event store.
 
 ## Result
 
-**No measurable skill.** The mean information coefficient is +0.0308 against a standard error of 0.0581 (t = +0.53), which is indistinguishable from zero at the conventional threshold. With 11 scored days this is the expected outcome whether or not an edge exists; it is a statement about the sample, not evidence that no signal is there. Calibration is worse than that: a Brier skill of -0.0367 means the stated probabilities were less useful than forecasting the base rate of 46.2% for every event. The reliability table below shows the shape of it — the forecasts run high, which is what fitting on one period and scoring on another produces when the share of positive outcomes moves between them.
+**No measurable skill.** The mean information coefficient is +0.0308 against a standard error of 0.0581 (t = +0.53), which is indistinguishable from zero at the conventional threshold. With 11 scored days this is the expected outcome whether or not an edge exists; it is a statement about the sample, not evidence that no signal is there. Calibration is worse than that: a Brier skill of -0.0367 means the stated probabilities were less useful than forecasting the base rate of 46.2% for every event. The forecasts run low on average, by 0.011 across the reliability bands below, weighted by the events in each.
 
 ## What this rests on
 

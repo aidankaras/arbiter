@@ -46,19 +46,48 @@ def _calibration_verdict(evaluation: Evaluation) -> str:
     skill = evaluation.brier_skill
     if math.isnan(skill):
         return ""
-    if skill < 0:
+    if skill > 0:
         return (
-            f" Calibration is worse than that: a Brier skill of {skill:+.4f} means "
-            f"the stated probabilities were less useful than forecasting the base "
-            f"rate of {evaluation.base_rate:.1%} for every event. The reliability "
-            "table below shows the shape of it — the forecasts run high, which is "
-            "what fitting on one period and scoring on another produces when the "
-            "share of positive outcomes moves between them."
+            f" The stated probabilities are worth slightly more than the base rate "
+            f"(Brier skill {skill:+.4f}), which is a weaker claim than discrimination "
+            "and should be read as one."
+        )
+    if skill == 0:
+        return (
+            " The stated probabilities are worth exactly what forecasting the base "
+            f"rate of {evaluation.base_rate:.1%} for every event would have been "
+            "(Brier skill 0), so they carry no information beyond it."
         )
     return (
-        f" The stated probabilities are worth slightly more than the base rate "
-        f"(Brier skill {skill:+.4f}), which is a weaker claim than discrimination "
-        "and should be read as one."
+        f" Calibration is worse than that: a Brier skill of {skill:+.4f} means "
+        f"the stated probabilities were less useful than forecasting the base "
+        f"rate of {evaluation.base_rate:.1%} for every event." + _bias_direction(evaluation)
+    )
+
+
+def _bias_direction(evaluation: Evaluation) -> str:
+    """Describe which way the forecasts miss, measured rather than assumed.
+
+    A negative Brier skill says the probabilities were worse than a constant; it
+    carries no direction. Taking one from the sign alone stated the opposite of
+    what the first published report showed, so the direction is computed from
+    the reliability bands, weighted by the events in each.
+    """
+    counted = [band for band in evaluation.calibration if band.count]
+    if not counted:
+        return ""
+
+    events = sum(band.count for band in counted)
+    residual = sum((band.forecast - band.realised) * band.count for band in counted) / events
+    if abs(residual) < 0.005:
+        return (
+            " The reliability table below shows no consistent direction to the "
+            "miss: the bands are wrong in both directions rather than shifted."
+        )
+    direction = "high" if residual > 0 else "low"
+    return (
+        f" The forecasts run {direction} on average, by {abs(residual):.3f} across "
+        "the reliability bands below, weighted by the events in each."
     )
 
 
