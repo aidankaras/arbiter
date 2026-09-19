@@ -22,11 +22,15 @@ jobs:
       id-token: write
       actions: read
     steps:
-      - uses: actions/checkout@v6
+      # Pinned to commits rather than tags. This job holds write access and an
+      # OAuth token, and it runs on a comment — the lowest bar of any workflow
+      # here — so the code it executes must not be able to change under a tag
+      # that stays spelled the same.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 1
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de  # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: "--max-turns 15 --model claude-sonnet-5"
