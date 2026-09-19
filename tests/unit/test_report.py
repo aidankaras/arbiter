@@ -161,3 +161,48 @@ def test_a_positive_brier_skill_is_still_qualified_in_the_verdict():
     verdict = render_baseline_report(better, GENERATED).split("## What this rests on")[0]
 
     assert "weaker claim than discrimination" in verdict
+
+
+def test_the_direction_of_a_miscalibration_is_measured_not_assumed():
+    """A negative Brier skill carries no direction; taking one from it was wrong.
+
+    The first published report had forecasts running *low* — a band forecasting
+    0.273 realised 0.831 — while the verdict asserted they ran high.
+    """
+    low = replace(
+        _evaluation(0.004, 0.011, 0.36),
+        brier_skill=-0.04,
+        calibration=[
+            CalibrationBin(lower=0.2, upper=0.3, forecast=0.273, realised=0.831, count=65),
+            CalibrationBin(lower=0.4, upper=0.5, forecast=0.457, realised=0.452, count=1003),
+        ],
+    )
+
+    verdict = render_baseline_report(low, GENERATED).split("## What this rests on")[0]
+
+    assert "run low" in verdict
+    assert "run high" not in verdict
+
+
+def test_forecasts_that_run_high_are_described_as_such():
+    high = replace(
+        _evaluation(0.004, 0.011, 0.36),
+        brier_skill=-0.04,
+        calibration=[
+            CalibrationBin(lower=0.7, upper=0.8, forecast=0.750, realised=0.300, count=400),
+        ],
+    )
+
+    verdict = render_baseline_report(high, GENERATED).split("## What this rests on")[0]
+
+    assert "run high" in verdict
+
+
+def test_exactly_zero_skill_is_not_called_better_than_the_base_rate():
+    """It falls in neither branch by sign, and was previously read as positive."""
+    neutral = replace(_evaluation(0.004, 0.011, 0.36), brier_skill=0.0)
+
+    verdict = render_baseline_report(neutral, GENERATED).split("## What this rests on")[0]
+
+    assert "worth exactly what forecasting the base rate" in verdict
+    assert "worth slightly more" not in verdict

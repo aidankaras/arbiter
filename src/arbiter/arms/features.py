@@ -148,6 +148,10 @@ def day_features(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, float]]:
     on the same day is a stronger signal than any of them alone, and counting
     distinct insiders rather than filings keeps one person's several rows from
     reading as a crowd.
+
+    Raises:
+        UnsupportedDomainError: the rows carry no Form 4 fields, as red-flag
+            events do not, so this arm has no features defined for them.
     """
     if rows and "insider_name" not in rows[0]:
         present = ", ".join(sorted(rows[0]))
