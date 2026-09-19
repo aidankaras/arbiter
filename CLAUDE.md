@@ -54,6 +54,20 @@ Concretely:
 - Commit messages read as engineering history: what changed and why, in the
   imperative mood.
 
+## Reporting standards for anyone dispatching or reviewing work here
+
+- **A claimed test count is verified, not trusted.** Run `uv run pytest tests/unit -q`
+  and read the tail line before treating any "N passed" as done. A report is the only
+  evidence a reviewer has unless they rerun the suite themselves, and this project has
+  already had an error message mistaken for a clean exit when it was the tail of a
+  traceback.
+- **A pinned Action SHA is verified against the source**, never copied from a plan or
+  another repository: `gh api repos/<org>/<repo>/git/ref/tags/<tag> --jq .object.sha`.
+- **Planning documents live outside this repository.** The spec and phase plans are kept
+  under `~/.claude/references/arbiter/`, never in this tree, so that planning context
+  never reaches a public reader. Design reasoning that belongs to the system goes in
+  `docs/`; reasoning about why the project exists does not go in the repository at all.
+
 ## Failure modes this codebase has actually hit
 
 Each of these produced a plausible, passing, wrong result rather than an error.
