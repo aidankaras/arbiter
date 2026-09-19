@@ -38,28 +38,20 @@ HORIZONS = {"insider": 5, "redflag": 20}
 #: slightly too long costs nothing but a few unused bars.
 _WINDOW_SLACK_SESSIONS = 3
 
-#: Calendar days of price history fetched before an event.
+#: Calendar days of price history fetched before an event, so that the entry
+#: session following a filing is inside the window.
 #:
-#: Sized by the longest backward window any consumer needs, which is the packet's
-#: 63-session volume percentile rather than labelling's own requirement of one
-#: entry session. One window serving both is what keeps packet construction from
-#: needing a second pass over the same symbols: the binding cost here is requests
-#: per minute, not bytes per request, so a wider range is very nearly free while
-#: a second request per symbol is not.
-#:
-#: Counted in calendar days rather than against the market calendar on purpose.
-#: Counting 63 sessions backwards from early January would reach into a year the
-#: holiday table does not cover and raise; and it is unnecessary, because the
-#: bars returned are themselves the trading calendar — every consumer works from
-#: the sessions it actually receives. 63 sessions span 88 calendar days of
-#: weekends alone, so this leaves room for the holidays too, and an over-long
-#: window costs nothing but unused bars.
-_LEAD_DAYS = 120
-
-#: The backward history a packet needs, in sessions. Stated here because it is
-#: what `_LEAD_DAYS` is sized from; the packet builder reports an absent
-#: statistic rather than a wrong one if it receives fewer.
-_PACKET_HISTORY_SESSIONS = 63
+#: Kept small on purpose. Packet construction reads backwards from an event and
+#: labelling reads forwards, and it is tempting to widen this so one fetch could
+#: serve both. It cannot, for a reason that outranks the saving: this window is
+#: planned over the events that are *resolvable today*, and a packet must exist
+#: for every event regardless of whether its outcome can be measured yet. Sharing
+#: the fetch would tie a packet's existence to label availability, which is the
+#: same coupling that once computed features over only the labelled subset of a
+#: day. Packet construction plans its own window, and `entry_sessions` discards
+#: every bar before the event anyway, so anything wider than this is fetched and
+#: thrown away.
+_LEAD_DAYS = 5
 
 
 @dataclass(frozen=True)
