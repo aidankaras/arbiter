@@ -34,15 +34,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      # Actions are pinned to a commit, not a tag: a tag can be moved to point
+      # at different code, and this job runs unattended with write access.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
 
       - name: Review the repository against its stated standards
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de  # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: '--allowedTools "Read,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(uv run pytest:*),Bash(uv run ruff:*),Write"'
+          claude_args: |
+            --max-turns 40
+            --allowedTools "Read,Glob,Grep,Bash(git log:*),Bash(git diff:*),Bash(uv run pytest:*),Bash(uv run ruff:*),Write(reports/standards-audit.md)"
           prompt: |
             Audit this repository against the correctness and quality properties it
             claims for itself. Read CLAUDE.md, docs/methodology.md and
