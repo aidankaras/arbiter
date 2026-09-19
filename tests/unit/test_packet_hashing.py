@@ -11,7 +11,7 @@ not; and a value with no stable textual form must be refused rather than
 rendered by whatever `repr` it happens to have.
 """
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -130,3 +130,24 @@ def test_a_true_boolean_does_not_collide_with_one():
 
 def test_an_empty_packet_still_has_an_identity():
     assert len(content_hash({})) == 64
+
+
+def test_a_session_date_hashes_as_a_calendar_day():
+    """Bars are stamped with a session, which is a day and not an instant."""
+    assert canonical_bytes({"session": date(2026, 8, 3)}).decode() == '{"session":"2026-08-03"}'
+
+
+def test_an_instant_does_not_collide_with_its_calendar_day():
+    """`datetime` subclasses `date`, so the order of the two checks is content.
+
+    Tested before `datetime`, every timestamp would render as its day: two
+    filings accepted hours apart would hash alike, and the packet hash would
+    stop distinguishing the inputs it exists to distinguish.
+    """
+    assert content_hash({"x": ACCEPTED}) != content_hash({"x": ACCEPTED.date()})
+
+
+def test_two_instants_on_one_day_still_hash_apart():
+    morning = datetime(2026, 8, 3, 14, 0, tzinfo=UTC)
+
+    assert content_hash({"x": morning}) != content_hash({"x": ACCEPTED})

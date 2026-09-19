@@ -63,6 +63,18 @@ Concretely:
   traceback.
 - **A pinned Action SHA is verified against the source**, never copied from a plan or
   another repository: `gh api repos/<org>/<repo>/git/ref/tags/<tag> --jq .object.sha`.
+- **A mutation test clears `__pycache__` before it runs.** CPython decides a cached
+  module is current from the source's size and its modification time truncated to whole
+  seconds, so a mutation that preserves the byte count and is tested within a second of
+  being written executes the *previous* bytecode. The suite passes, and that outcome is
+  indistinguishable from a mutation the tests genuinely failed to catch. Flipping one
+  digit for another, or `<` for `>`, is size-preserving, which makes the sharpest
+  mutations the ones most likely to be reported wrongly:
+
+  ```bash
+  find . -name __pycache__ -type d -prune -exec rm -rf {} +
+  uv run pytest tests/unit -q -p no:cacheprovider
+  ```
 - **Planning documents live outside this repository.** The spec and phase plans are kept
   under `~/.claude/references/arbiter/`, never in this tree, so that planning context
   never reaches a public reader. Design reasoning that belongs to the system goes in
@@ -100,8 +112,16 @@ defect. Derive a property from the requirement, never from the code. Prove a
 regression test bites by replaying the old behaviour.
 
 **Unit tests here have never caught a real defect.** Every one surfaced in a
-live run. A mutation audit found 9 of 22 semantic mutations surviving the whole
-suite. Run `pytest -m integration` before believing anything works.
+live run. Run `pytest -m integration` before believing anything works.
+
+An early mutation audit reported 9 of 22 semantic mutations surviving the suite,
+and that figure is no longer cited because the mutations behind it were never
+written down. It cannot be reproduced, and it was produced without clearing the
+bytecode cache, which biases such a count toward *over*-stating weakness: a
+size-preserving mutation that never took effect leaves the suite green and is
+recorded as one the tests failed to catch. A summary that outlives its evidence
+is an anecdote, whichever direction it errs in — record the mutation list with
+the count, or report neither.
 
 ## Engineering standards
 
