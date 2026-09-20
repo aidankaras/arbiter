@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from arbiter.ingestion.market import Bar, closed_bars, tradeable_symbol
+from arbiter.ingestion.timestamps import SEC_TIMEZONE
 from arbiter.packets.build import build_packet
 from arbiter.packets.schema import EvidencePacket
 from arbiter.packets.store import write_packets
@@ -113,8 +114,12 @@ def build_day(
         # events. A request per issuer would cost hundreds against a rate limit
         # measured per minute, and the window being wider than any single event
         # needs is far cheaper than the requests it saves.
-        earliest = min(row["as_of"].date() for row, _ in usable)
-        latest = max(row["as_of"].date() for row, _ in usable)
+        sessions = {
+            str(row["accession_no"]): row["as_of"].astimezone(SEC_TIMEZONE).date()
+            for row, _ in usable
+        }
+        earliest = min(sessions.values())
+        latest = max(sessions.values())
         symbols = sorted({symbol for _, symbol in usable})
         series = fetch_bars(symbols, earliest - timedelta(days=HISTORY_DAYS), latest)
 
@@ -125,7 +130,21 @@ def build_day(
             # passes a test on the vendor's rows and truncates to nothing, which
             # writes exactly the packet this guard exists to prevent: hashed,
             # citable, and carrying no market evidence at all.
-            bars = closed_bars(series.get(symbol, []), row["as_of"])
+            # Sliced to this event's own window, not the day's. The fetch is
+            # batched across the day because requests are the constrained
+            # resource, but a packet cut from the shared span would take its
+            # oldest bar from whichever event in the partition happened to be
+            # earliest — so its hash would depend on which *other* filings the
+            # day contained, and on whether their tickers were priceable. A
+            # re-ingest that added or removed one filing would then silently
+            # re-hash every other packet in the day, and every prediction citing
+            # the old hashes would become untraceable with no error anywhere.
+            window_start = sessions[str(row["accession_no"])] - timedelta(days=HISTORY_DAYS)
+            bars = [
+                bar
+                for bar in closed_bars(series.get(symbol, []), row["as_of"])
+                if bar.timestamp.astimezone(SEC_TIMEZONE).date() >= window_start
+            ]
             if not bars:
                 excluded.append(
                     {

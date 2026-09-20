@@ -260,3 +260,75 @@ def test_a_packet_holds_no_bar_that_had_not_closed(tmp_path: Path):
 
     (packet,) = read_packets(tmp_path / "packets", "insider", DAY)
     assert DAY not in [bar.session for bar in packet.bars]
+
+
+def test_a_packets_identity_does_not_depend_on_the_other_events_that_day(tmp_path: Path):
+    """A hash must name the evidence, not the day's roster.
+
+    The window is planned across the day because requests are the constrained
+    resource, but a packet cut from that shared span takes its oldest bar from
+    whichever event happened to be earliest. Its hash then moves when an
+    unrelated filing is added or removed — so re-ingesting a day would silently
+    re-hash every other packet in it, and every prediction citing the old hashes
+    would become untraceable with no error anywhere.
+    """
+    late = _row("late", "MO", hour=20)
+    early = _row("early", "MO", hour=14)
+    bars = [
+        Bar(
+            timestamp=datetime(2026, 7, 13, 4, 0, tzinfo=UTC) - timedelta(days=offset),
+            open=Decimal("50"),
+            high=Decimal("51"),
+            low=Decimal("49"),
+            close=Decimal("50"),
+            volume=Decimal("1000"),
+        )
+        for offset in range(1, 200)
+    ]
+
+    alone_root = _store(tmp_path / "alone", [late])
+    fetch_alone, _ = _fetch({"MO": bars})
+    build_day(
+        DAY, alone_root, tmp_path / "p1", fetch_bars=fetch_alone, benchmark_for=lambda _: "XLP"
+    )
+    (alone,) = read_packets(tmp_path / "p1", "insider", DAY)
+
+    together_root = _store(tmp_path / "together", [early, late])
+    fetch_together, _ = _fetch({"MO": bars})
+    build_day(
+        DAY,
+        together_root,
+        tmp_path / "p2",
+        fetch_bars=fetch_together,
+        benchmark_for=lambda _: "XLP",
+    )
+    together = next(
+        packet
+        for packet in read_packets(tmp_path / "p2", "insider", DAY)
+        if packet.event_id == "late"
+    )
+
+    assert together.content_hash == alone.content_hash
+
+
+def test_the_price_window_is_bounded_by_the_market_session_not_the_utc_date(tmp_path: Path):
+    """An evening filing's UTC date is the next day, and the feed refuses it.
+
+    EDGAR gives a Form 4 accepted at 21:00 Eastern that day's filing date, but
+    its UTC instant falls on the next calendar day. Asking the consolidated feed
+    for a window ending then is asking for the current session, which it
+    refuses — so a day containing an evening filing, which is most days, would
+    fail to build at all.
+    """
+    # 02:00 UTC on the 13th is 22:00 Eastern on the 12th: one session, two
+    # calendar dates, and only the Eastern one is a market session.
+    root = _store(tmp_path, [_row("evening", "MO", hour=2)])
+    fetch, calls = _fetch({"MO": _bars()})
+
+    build_day(DAY, root, tmp_path / "packets", fetch_bars=fetch, benchmark_for=lambda _: "XLP")
+
+    _, _, end = calls[0]
+    assert end == date(2026, 7, 12), (
+        f"window ends {end}; the event's market session is 2026-07-12 and asking "
+        "the consolidated feed for the 13th is asking for the current session"
+    )
