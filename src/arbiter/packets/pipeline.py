@@ -25,7 +25,7 @@ from typing import Any
 from arbiter.ingestion.market import Bar, closed_bars, tradeable_symbol
 from arbiter.ingestion.timestamps import SEC_TIMEZONE
 from arbiter.packets.build import build_packet
-from arbiter.packets.schema import EvidencePacket
+from arbiter.packets.schema import EvidencePacket, LookaheadError
 from arbiter.packets.store import write_packets
 
 #: Calendar days of history requested before the earliest event in a day.
@@ -162,7 +162,7 @@ def build_day(
                         sector_etf=benchmark_for(int(row["cik"])),
                     )
                 )
-            except (InvalidOperation, TypeError, ValueError) as error:
+            except (InvalidOperation, KeyError, LookaheadError, TypeError, ValueError) as error:
                 # One malformed row must cost one event, not the day. Reaching
                 # here without a handler aborted `build_day` before any packet
                 # was written, so a single unparseable price discarded every

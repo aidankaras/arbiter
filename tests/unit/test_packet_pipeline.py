@@ -71,8 +71,11 @@ def _store(tmp_path: Path, rows: list[dict[str, object]]) -> Path:
         position: str
         transaction_code: str
         shares: Decimal
-        price: Decimal
-        value_usd: Decimal
+        # Nullable exactly as `InsiderEvent` is. A stricter stub cannot store the
+        # rows production actually holds, so the isolation path below would be
+        # untestable and the divergence would read as the code being safe.
+        price: Decimal | None
+        value_usd: Decimal | None
         remaining_shares: Decimal | None
         is_10b5_1: bool
 
@@ -332,3 +335,89 @@ def test_the_price_window_is_bounded_by_the_market_session_not_the_utc_date(tmp_
         f"window ends {end}; the event's market session is 2026-07-12 and asking "
         "the consolidated feed for the 13th is asking for the current session"
     )
+
+
+def test_one_malformed_row_costs_one_event_and_not_the_day(tmp_path: Path):
+    """The batching rule, at the row level.
+
+    Written because adding a bare `raise` to the isolation handler left the
+    whole suite passing: the fix was indistinguishable from its absence. Before
+    it, an unparseable price escaped `build_day` before `write_packets` ran, so
+    one bad row discarded every other packet on the day and left no partition at
+    all.
+    """
+    good = [_row(f"ok-{index}", "MO") for index in range(3)]
+    bad = {**_row("bad", "MO"), "value_usd": None}  # nullable in store, unusable here
+    root = _store(tmp_path, [*good, bad])
+    fetch, _ = _fetch({"MO": _bars()})
+
+    written, excluded = build_day(
+        DAY, root, tmp_path / "packets", fetch_bars=fetch, benchmark_for=lambda _: "XLP"
+    )
+
+    assert written == 3
+    assert [record["accession_no"] for record in excluded] == ["bad"]
+    assert len(read_packets(tmp_path / "packets", "insider", DAY)) == 3
+
+
+def test_the_days_exclusions_are_written_beside_its_packets(tmp_path: Path):
+    """A record nothing reads is a record that does not exist."""
+    import json
+
+    root = _store(tmp_path, [_row("kept", "MO"), _row("dropped", "KO")])
+    fetch, _ = _fetch({"MO": _bars()})
+
+    build_day(DAY, root, tmp_path / "packets", fetch_bars=fetch, benchmark_for=lambda _: "XLP")
+
+    path = (
+        tmp_path / "packets" / "unpriceable" / "packets" / "insider" / f"{DAY.isoformat()}.json"
+    )
+    assert path.exists()
+    recorded = json.loads(path.read_text())
+    assert [entry["accession_no"] for entry in recorded] == ["dropped"]
+
+
+def test_a_day_excluding_nothing_still_writes_its_exclusion_record(tmp_path: Path):
+    """The negative control, without which absent and empty are one state."""
+    import json
+
+    root = _store(tmp_path, [_row("kept", "MO")])
+    fetch, _ = _fetch({"MO": _bars()})
+
+    build_day(DAY, root, tmp_path / "packets", fetch_bars=fetch, benchmark_for=lambda _: "XLP")
+
+    path = (
+        tmp_path / "packets" / "unpriceable" / "packets" / "insider" / f"{DAY.isoformat()}.json"
+    )
+    assert path.exists(), "a day that excluded nothing must say so"
+    assert json.loads(path.read_text()) == []
+
+
+def test_a_series_lying_entirely_after_its_event_is_excluded_not_emptied(tmp_path: Path):
+    """The truncate-before-emptiness fix, replayed.
+
+    A non-empty series that all postdates the event passes a test on the
+    vendor's rows and truncates to nothing, writing a hashed, citable packet
+    carrying no market evidence at all.
+    """
+    root = _store(tmp_path, [_row("mid-session", "MO", hour=14)])
+    after = [
+        Bar(
+            timestamp=datetime(2026, 7, 13, 4, 0, tzinfo=UTC) + timedelta(days=offset),
+            open=Decimal("50"),
+            high=Decimal("51"),
+            low=Decimal("49"),
+            close=Decimal("50"),
+            volume=Decimal("1000"),
+        )
+        for offset in range(0, 5)
+    ]
+    fetch, _ = _fetch({"MO": after})
+
+    written, excluded = build_day(
+        DAY, root, tmp_path / "packets", fetch_bars=fetch, benchmark_for=lambda _: "XLP"
+    )
+
+    assert written == 0
+    assert "before the event" in excluded[0]["reason"]
+    assert read_packets(tmp_path / "packets", "insider", DAY) == []

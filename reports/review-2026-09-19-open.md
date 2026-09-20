@@ -104,3 +104,74 @@ figure. The duplication it fixes was originally found by exactly such a
 comparison — a day's packets yielding fewer distinct hashes than packets. If the
 identity key is ever too loose, the resulting undercount would be invisible to
 the only technique that has caught this class of defect here.
+
+---
+
+# Test-coverage findings, 2026-09-19
+
+A third review pass mutated the branch systematically and found nineteen
+surviving mutations, each verified against a control mutation confirmed to kill
+three tests. Four are now closed (the per-item isolation handler, the exclusion
+record and its negative control, and the truncate-before-emptiness fix). The
+rest are recorded here in the reviewer's own priority order.
+
+A methodology note worth keeping: mutating in a *copied* tree whose `.venv` came
+with it produces a table in which everything survives, because `.venv/bin/pytest`
+carries an absolute shebang and runs the original repo's interpreter. Mutate in
+place with `scripts/mutate.sh`, or `rm -rf .venv && uv sync` in the copy first.
+
+## Boundaries that are not pinned
+
+1. **The close instant inside the packet validator** (`schema.py`). The same
+   boundary `closed_bars` enforces, enforced a second time, with no packet test
+   whose bar closes exactly at `as_of`. Loosening `>` to `>=` changes nothing.
+   The comparable branch three lines below has precisely this test.
+2. **The value threshold** (`insider.py`). Tests use 101,430 and 900 against a
+   50,000 floor, so nothing sits at the line — `>=` to `>` survives, and so does
+   *halving the threshold*. This constant defines the studied population of
+   every published comparison and `CLAUDE.md` calls it a reviewed change rather
+   than a tuning knob; nothing would fail if it moved.
+3. **The 21-session volatility minimum and the 63-session percentile minimum**
+   (`build.py`). Only one side of each is tested. A volatility computed over 20
+   returns is reported as 21-session, and the shortfall concentrates at the
+   start of every issuer's history.
+4. **The percentile's window anchoring** (`build.py`). Every test passes exactly
+   63 bars, so `bars[-63:]` and `bars[:63]` are indistinguishable, as are
+   `len(window)` and `len(bars)`. With a realistic longer series the first ranks
+   the latest session against the oldest quarter.
+5. **The per-event window start** (`pipeline.py`). `>= window_start` to `>`
+   survives; the identity test compares two hashes that move together under it.
+
+## Tests that cannot fail
+
+6. **Two Eastern-conversion tests are blind.** `test_a_bar_stamped_before_the_
+   eastern_day_belongs_to_the_eastern_session` uses 04:00 UTC — exactly 00:00
+   EDT — so the UTC and Eastern dates agree and the conversion is never
+   exercised. Every bar in `test_bar_availability.py` is stamped 05:00 UTC, the
+   same Eastern date all year. Dropping `.astimezone(SEC_TIMEZONE)` from either
+   `to_session_bar` or `closed_bars` leaves the suite green. These stand in for
+   a whole-calendar shift.
+7. **`test_packets_are_built_without_consulting_labels`** asserts a label
+   directory does not exist, which the fixture guarantees. The property it names
+   — a packet is built for an event whose outcome cannot be measured yet — is
+   untested.
+8. **Parts of the contract sweep restate the filter.** Asserting `value_usd is
+   not None` and `value_usd >= THRESHOLD` over `is_candidate`'s own output
+   restates its implementation.
+
+## Identity and dedupe
+
+9. **The dedupe key can shed `Price` or `Remaining Shares` undetected**, because
+   one fixture's duplicate rows are identical in all seven fields and the
+   other's differ in shares, price and value together. A test with two rows
+   differing only in `Remaining Shares` would reach the part the fixtures
+   cannot. The failure direction loses real observations, and correlates with
+   insiders who trade more than once a day.
+10. **`"Date"` being a required column is unpinned**, though the equivalent
+    guard for `"Shares"` is tested.
+11. **`sorted()` inside `_canonical` is redundant** — `json.dumps(sort_keys=True)`
+    already sorts every level — so `test_key_order_is_not_content` passes for a
+    reason other than the one its docstring gives. Not a defect; a comment.
+12. **The store's atomic write is unasserted.** Replacing `Path.replace` with a
+    non-atomic copy leaves the suite green, while the docstring claims an
+    interrupted run leaves the previous partition intact.
