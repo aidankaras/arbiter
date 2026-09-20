@@ -91,6 +91,16 @@ nothing downstream can tell the two apart.
   become two identities — and the stated reason would have taught a reader something
   untrue about the serialiser. When a comment explains a mechanism, check the
   mechanism.
+- **A review question is scoped to the unit you were thinking about**, and the
+  defects that survive review live at the seams between units. Both defects that
+  withdrew the first baseline result were found by the `pr-review-toolkit`
+  specialists rather than by the detailed, project-specific prompts written for
+  them — and one of those prompts asked about packet identity explicitly. It
+  could not reach a hash that depended on which *other* events shared the day,
+  because every field was hashed; the leak was in how one was derived. After
+  writing a review question, name the unit it covers and look one seam outward:
+  the caller, the level below, the empty input, the neighbour sharing state.
+  Fuller treatment in the `verification-discipline` skill.
 - **Planning documents live outside this repository.** The spec and phase plans are kept
   under `~/.claude/references/arbiter/`, never in this tree, so that planning context
   never reaches a public reader. Design reasoning that belongs to the system goes in
