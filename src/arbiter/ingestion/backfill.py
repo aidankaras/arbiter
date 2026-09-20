@@ -122,6 +122,7 @@ class BackfillReport:
     failed: dict[date, str] = field(default_factory=dict[date, str])
     events: int = 0
     labels: int = 0
+    packets: int = 0
 
     @property
     def attempted(self) -> int:
@@ -135,9 +136,15 @@ def backfill(
     resolve: Callable[[date], int],
     *,
     is_stored: Callable[[date], bool],
+    pack: Callable[[date], int] | None = None,
     on_progress: Callable[[str], None] | None = None,
 ) -> BackfillReport:
-    """Ingest and label each day, skipping those already stored.
+    """Ingest, label and optionally build packets for each day.
+
+    `pack` runs after labelling and is skipped when omitted. When it is supplied,
+    `is_stored` must also require the day's packets: a day whose events and
+    labels were written before packet building failed is otherwise reported as
+    stored on the next run, and its packets are never built.
 
     The work is injected rather than imported so that the sequencing, the
     resume rule, and the failure policy can be tested without reaching the
@@ -159,6 +166,8 @@ def backfill(
             counts = _with_retries(ingest, day)
             report.events += counts.get("insider", 0) + counts.get("redflag", 0)
             report.labels += _with_retries(resolve, day)
+            if pack is not None:
+                report.packets += _with_retries(pack, day)
             report.completed.append(day)
         except _RUN_LEVEL_FAULTS:
             # Not a property of this day. A missing credential or a refused feed
@@ -201,6 +210,20 @@ def backfill(
 
 #: The domains a complete day holds, each with its events and its labels.
 _DOMAINS = ("insider", "redflag")
+
+
+def day_is_packed(root: Path, packet_root: Path, day: date) -> bool:
+    """Report whether a day is complete *including* its packets.
+
+    Used as the resume rule when a run builds packets. Packets are written after
+    labelling, so a day whose packet build failed still has its events and its
+    labels — and the rule that looks only at those would call it finished and
+    skip it forever, which is the same hole `day_is_stored` exists to close one
+    stage earlier.
+    """
+    from arbiter.packets.store import partition_exists as packets_exist
+
+    return day_is_stored(root, day) and packets_exist(packet_root, "insider", day)
 
 
 def day_is_stored(root: Path, day: date) -> bool:

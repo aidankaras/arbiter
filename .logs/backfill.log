@@ -1,1 +1,31 @@
 29 trading days from 2026-03-02 to 2026-08-11
+2026-03-02  events=580  labels=570  done=1/29  failed=0
+2026-03-06  events=1315  labels=1282  done=2/29  failed=0
+2026-03-12  events=1920  labels=1876  done=3/29  failed=0
+2026-03-18  events=2434  labels=2383  done=4/29  failed=0
+2026-03-24  events=3427  labels=3365  done=5/29  failed=0
+2026-03-30  events=3779  labels=3704  done=6/29  failed=0
+2026-04-06  events=4063  labels=3981  done=7/29  failed=0
+2026-04-10  events=4430  labels=4339  done=8/29  failed=0
+2026-04-16  events=4689  labels=4585  done=9/29  failed=0
+2026-04-22  events=5043  labels=4937  done=10/29  failed=0
+2026-04-28  events=5504  labels=5391  done=11/29  failed=0
+2026-05-04  events=5838  labels=5715  done=12/29  failed=0
+2026-05-08  events=7011  labels=6856  done=13/29  failed=0
+2026-05-14  events=7583  labels=7417  done=14/29  failed=0
+2026-05-20  events=8215  labels=8035  done=15/29  failed=0
+2026-05-27  events=8735  labels=8539  done=16/29  failed=0
+2026-06-02  events=9174  labels=8964  done=17/29  failed=0
+2026-06-08  events=10356  labels=10130  done=18/29  failed=0
+2026-06-12  events=11448  labels=11195  done=19/29  failed=0
+2026-06-18  events=12131  labels=11856  done=20/29  failed=0
+2026-06-25  events=12264  labels=11985  done=21/29  failed=0
+2026-07-01  events=12498  labels=12207  done=22/29  failed=0
+2026-07-08  events=12912  labels=12590  done=23/29  failed=0
+2026-07-14  events=13029  labels=12695  done=24/29  failed=0
+2026-07-20  events=13149  labels=12800  done=25/29  failed=0
+2026-07-24  events=13329  labels=12955  done=26/29  failed=0
+2026-07-30  events=13580  labels=13192  done=27/29  failed=0
+2026-08-05  events=14081  labels=13682  done=28/29  failed=0
+2026-08-11  events=14650  labels=14246  done=29/29  failed=0
+completed: 29  skipped: 0  failed: 0  events: 14650  labels: 14246

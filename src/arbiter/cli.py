@@ -228,6 +228,8 @@ def backfill(
     every: int = 1,
     root: str = "data/events",
     min_value_usd: str = "50000",
+    with_packets: bool = False,
+    packet_root: str = "data/packets",
 ) -> None:
     """Build a history by ingesting and labeling a range of trading days.
 
@@ -238,23 +240,59 @@ def backfill(
     day share a market factor that the sector benchmark only partly removes.
 
     Days already stored are skipped, so an interrupted run is simply restarted.
+    With `--with-packets`, evidence packets are built for each day as it lands
+    and a day counts as stored only once its packets exist.
     """
     days = sampled_trading_days(date.fromisoformat(start), date.fromisoformat(end), every)
     ingest_step, resolve_step = ingest_and_resolve(Path(root), Decimal(min_value_usd))
 
     typer.echo(f"{len(days)} trading days from {days[0]} to {days[-1]}" if days else "no days")
 
+    from arbiter.ingestion.backfill import day_is_packed
+    from arbiter.packets.pipeline import build_day as build_packet_day
+
+    today = current_session_date()
+
+    def fetch(
+        symbols: Sequence[str], window_start: date, window_end: date
+    ) -> dict[str, list[Bar]]:
+        return daily_bars_tolerating_gaps(list(symbols), window_start, window_end, today)
+
+    def pack(day: date) -> int:
+        written, _ = build_packet_day(
+            day,
+            Path(root),
+            Path(packet_root),
+            fetch_bars=fetch,
+            benchmark_for=benchmark_for_issuer,
+        )
+        return written
+
+    def stored_without_packets(day: date) -> bool:
+        return day_is_stored(Path(root), day)
+
+    def stored_with_packets(day: date) -> bool:
+        # The resume rule tightens with the work: a day whose packet build
+        # failed still has its events and labels, and the looser rule would call
+        # it finished and skip it forever.
+        return day_is_packed(Path(root), Path(packet_root), day)
+
+    pack_step = pack if with_packets else None
+    stored = stored_with_packets if with_packets else stored_without_packets
+
     summary = run_backfill(
         days,
         ingest=ingest_step,
         resolve=resolve_step,
-        is_stored=lambda day: day_is_stored(Path(root), day),
+        is_stored=stored,
+        pack=pack_step,
         on_progress=typer.echo,
     )
 
     typer.echo(
         f"completed: {len(summary.completed)}  skipped: {len(summary.skipped)}  "
         f"failed: {len(summary.failed)}  events: {summary.events}  labels: {summary.labels}"
+        + (f"  packets: {summary.packets}" if with_packets else "")
     )
     for day, cause in sorted(summary.failed.items()):
         typer.echo(f"  {day.isoformat()}: {cause}", err=True)
