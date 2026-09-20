@@ -19,6 +19,12 @@ from arbiter.ingestion.market import MissingCredentialsError
 DAYS = [date(2026, 8, day) for day in (3, 4, 5, 6, 7)]
 
 
+def _always_fails(day: date) -> int:
+    """A packet step that cannot succeed, for the resume-rule test below."""
+    msg = "no price series"
+    raise ValueError(msg)
+
+
 def _counts(insider: int = 10, redflag: int = 2) -> dict[str, int]:
     return {"insider": insider, "redflag": redflag, "rejected": 0, "unpriceable": 0}
 
@@ -218,3 +224,107 @@ def test_a_missing_credential_stops_the_run_immediately(monkeypatch: pytest.Monk
         )
 
     assert attempted == [DAYS[0]], "the run stops on the first day, not the fourth"
+
+
+def test_packets_are_built_after_labels_for_each_day():
+    """Ordering is content: a packet is built from a day already ingested."""
+    calls: list[str] = []
+
+    backfill(
+        DAYS[:2],
+        ingest=lambda day: (calls.append(f"ingest {day.day}"), _counts())[1],
+        resolve=lambda day: (calls.append(f"resolve {day.day}"), 9)[1],
+        is_stored=lambda day: False,
+        pack=lambda day: (calls.append(f"pack {day.day}"), 7)[1],
+    )
+
+    assert calls == [
+        "ingest 3",
+        "resolve 3",
+        "pack 3",
+        "ingest 4",
+        "resolve 4",
+        "pack 4",
+    ]
+
+
+def test_packets_are_counted_in_the_report():
+    report = backfill(
+        DAYS[:3],
+        ingest=lambda _: _counts(),
+        resolve=lambda _: 9,
+        is_stored=lambda _: False,
+        pack=lambda _: 7,
+    )
+
+    assert report.packets == 21
+
+
+def test_no_packet_step_runs_when_none_is_supplied():
+    """The step is opt-in; omitting it must not invent a zero-length pass."""
+    report = backfill(
+        DAYS[:2],
+        ingest=lambda _: _counts(),
+        resolve=lambda _: 9,
+        is_stored=lambda _: False,
+    )
+
+    assert report.packets == 0
+    assert len(report.completed) == 2
+
+
+def test_a_day_whose_packet_build_fails_is_not_recorded_as_completed():
+    """Otherwise the looser resume rule would skip it and never build them.
+
+    The day's events and labels are already written when packing runs, so the
+    failure has to be visible somewhere other than the event store — which is
+    what `day_is_packed` looks at on the next run.
+    """
+    report = backfill(
+        DAYS[:2],
+        ingest=lambda _: _counts(),
+        resolve=lambda _: 9,
+        is_stored=lambda _: False,
+        pack=_always_fails,
+    )
+
+    assert report.completed == []
+    assert set(report.failed) == set(DAYS[:2])
+    assert "no price series" in report.failed[DAYS[0]]
+
+
+def test_a_day_with_events_and_labels_but_no_packets_is_not_yet_stored(tmp_path):
+    """The resume rule a packet-building run has to use.
+
+    Packets are written after labelling, so a day whose packet build failed has
+    both earlier partitions on disk. Judged by those alone it reads as finished,
+    is skipped on every later run, and its packets are never built — the same
+    hole `day_is_stored` closes one stage earlier for labels.
+    """
+    from arbiter.ingestion.backfill import day_is_packed, day_is_stored
+    from arbiter.ingestion.store import write_events
+    from arbiter.packets.store import write_packets
+
+    root, packets = tmp_path / "events", tmp_path / "packets"
+    day = DAYS[0]
+    for domain in ("insider", "redflag"):
+        write_events([], root, domain, day)
+        write_events([], root, f"labels-{domain}", day)
+
+    assert day_is_stored(root, day), "events and labels are present"
+    assert not day_is_packed(root, packets, day), "but the packets are not"
+
+    write_packets([], packets, "insider", day)
+
+    assert day_is_packed(root, packets, day)
+
+
+def test_packets_alone_do_not_make_a_day_stored(tmp_path):
+    """The `or` reading of the rule: packets without labels is not a done day."""
+    from arbiter.ingestion.backfill import day_is_packed
+    from arbiter.packets.store import write_packets
+
+    root, packets = tmp_path / "events", tmp_path / "packets"
+    write_packets([], packets, "insider", DAYS[0])
+
+    assert not day_is_packed(root, packets, DAYS[0])

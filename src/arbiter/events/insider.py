@@ -40,6 +40,12 @@ _IDENTITY_COLUMNS = (
     "Issuer",
     "Insider",
     "Position",
+    # Required, not optional, because the row identity below is built from it.
+    # Read with `.get` it would degrade to the string "None" for every row if
+    # the column were ever renamed upstream, silently narrowing the identity and
+    # merging trades made on different days into one event — with no error, and
+    # with a comment still asserting the date is part of the key.
+    "Date",
 )
 
 _REQUIRED_COLUMNS = _TRANSACTION_COLUMNS + _IDENTITY_COLUMNS
@@ -168,6 +174,9 @@ def _optional_decimal(row: dict[str, Any], column: str, accession_no: str) -> De
 def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEvent]:
     """Convert one parsed Form 4 into events, one per reported transaction.
 
+    A transaction reported by several joint owners is one transaction and yields
+    one event.
+
     Raises:
         KeyError: the parsed table lacks a column an event requires. The filing
             format changed and must be re-examined rather than worked around,
@@ -177,7 +186,27 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
     frame = form4.to_dataframe()
     is_plan_trade = bool(form4.aff10b5_one)
 
+    # The issuer's CIK, not the filing record's. A day's index lists a Form 4
+    # once per reporting-owner CIK, so the record may carry an owner's identity
+    # rather than the company's — and the sector benchmark is looked up by CIK,
+    # where an owner resolves to nothing and falls back to the broad market.
+    # Events for one issuer would then be measured against different benchmarks
+    # depending on which index entry they happened to arrive through.
+    issuer_cik = int(form4.issuer.cik)
+
     events: list[InsiderEvent] = []
+    # One transaction reported jointly appears once per reporting owner, with
+    # the owners collapsed into a single name string — so a fund's purchase
+    # filed by three related entities arrives as three rows identical in every
+    # field. Counting them separately would weight one transaction three times,
+    # and joint filing is how funds, groups and ten-percent owners file while
+    # officers file alone. The over-weighting would therefore track filer type,
+    # which is the very thing the study asks the data to discriminate on.
+    #
+    # Rows are collapsed on every reported field including the transaction date,
+    # so two genuine trades differing in any of size, price, date or resulting
+    # holding remain two events.
+    seen: set[tuple[str, ...]] = set()
     for row in frame.to_dict(orient="records"):
         # Presence of a *value*, not of a column: every row in a frame carries
         # the same keys, so a column-presence test can never filter the holdings
@@ -211,11 +240,27 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
             )
             raise UnpriceableIssuerError(msg)
 
+        identity = tuple(
+            str(row[column])
+            for column in (
+                "Insider",
+                "Code",
+                "Shares",
+                "Price",
+                "Value",
+                "Remaining Shares",
+                "Date",
+            )
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+
         events.append(
             InsiderEvent(
                 accession_no=record.accession_no,
                 as_of=record.as_of,
-                cik=record.cik,
+                cik=issuer_cik,
                 ticker=ticker,
                 issuer=str(row["Issuer"]),
                 insider_name=str(row["Insider"]),

@@ -49,18 +49,19 @@ Modules that exist today:
 | `ingestion` | EDGAR client, filing parsers, market data, event store | `events` |
 | `events` | Trigger evaluation, event normalization | `ingestion` |
 | `evaluation` | Abnormal return labels | — |
+| `arms` | Conventional baseline: features, fitting, out-of-sample scoring | `evaluation` |
+| `packets` | Packet schema, content hashing, point-in-time enforcement | `ingestion` |
 | `llm` | Usage metering and spend ceilings | `db` |
 | `db` | Models, session management, migrations | — |
 
 Modules the design calls for, not yet written. They are described here so the
-boundaries are settled before code arrives; none of them exists in the tree, and
-the packages are created when their first module is:
+boundaries are settled before code arrives; the packages are created when their
+first module is:
 
 | Planned module | Responsibility |
 |---|---|
-| `packets` | Packet construction, schema, hashing, timestamp enforcement |
 | `retrieval` | Vector and relational comparable lookup, as-of filtering |
-| `arms/*` | The four forecasting approaches |
+| `arms` (language-model arms) | The three model-driven approaches; only the conventional baseline exists |
 | `portfolio` | Sizing, risk limits, shadow books, broker adapter |
 | `reporting` | Weekly report generation |
 | `api` | Dashboard data publication |

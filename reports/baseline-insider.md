@@ -6,6 +6,23 @@ are measured against, not a proposed strategy.
 
 Generated 2026-09-19 from the event store.
 
+> **Withdrawn 2026-09-19. Do not cite any figure below.**
+>
+> The event store this was computed from holds duplicated rows. A Form 4
+> reporting several transactions was stored as one copy of its single qualifying
+> transaction *per reported line*, so events are inflated by a factor that
+> averages 2.94 across the stored days and ranges from 2.34 to 4.59. The
+> duplicates are exact, which makes them perfectly correlated observations
+> counted as independent ones, and the factor varies by day — so the error is
+> correlated with how many lines a day's filings carried rather than spread
+> evenly across the sample.
+>
+> The parser no longer does this; the stored days predate the fix and must be
+> re-ingested. Every count below is overstated, and every statistic computed per
+> event rather than per issuer-day rests on repeated rows. The report is left in
+> place rather than deleted so that what was claimed at this commit stays
+> inspectable, which is the same reason results are committed at all.
+
 ## Result
 
 **No measurable skill.** The mean information coefficient is +0.0308 against a standard error of 0.0581 (t = +0.53), which is indistinguishable from zero at the conventional threshold. With 11 scored days this is the expected outcome whether or not an edge exists; it is a statement about the sample, not evidence that no signal is there. Calibration is worse than that: a Brier skill of -0.0367 means the stated probabilities were less useful than forecasting the base rate of 46.2% for every event. The forecasts run low by 0.011 across the reliability bands below, weighted by the events in each, on balance, with 2 of 6 bands running the other way.

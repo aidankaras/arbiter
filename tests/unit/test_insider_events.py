@@ -7,25 +7,13 @@ import pytest
 
 from arbiter.events.insider import InsiderEvent, extract_insider_events, is_candidate
 from arbiter.ingestion.edgar import FilingRecord
+from tests.unit.form4_stub import Form4Stub
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 OPEN_MARKET = FIXTURES / "form4_open_market.json"
 PLAN_TRADE = FIXTURES / "form4_plan_trade.json"
 
 MIN_VALUE = Decimal("50000")
-
-
-class _Form4:
-    """Stands in for the parsed filing, exposing only what the extractor reads."""
-
-    def __init__(self, payload: dict) -> None:
-        self._payload = payload
-        self.aff10b5_one = payload["aff10b5_one"]
-
-    def to_dataframe(self):
-        import pandas as pd
-
-        return pd.DataFrame(self._payload["rows"])
 
 
 def _record() -> FilingRecord:
@@ -68,7 +56,7 @@ def test_the_captured_fixture_has_the_fields_the_extractor_reads():
 
 def test_extracting_an_open_market_purchase_from_a_real_filing():
     payload = json.loads(OPEN_MARKET.read_text())
-    events = extract_insider_events(_record(), _Form4(payload))
+    events = extract_insider_events(_record(), Form4Stub(payload))
     assert events
     purchase = events[0]
     assert purchase.transaction_code == "P"
@@ -81,13 +69,13 @@ def test_extracting_an_open_market_purchase_from_a_real_filing():
 def test_events_inherit_the_filings_acceptance_instant():
     """The transaction date is not when the market learned of it."""
     payload = json.loads(OPEN_MARKET.read_text())
-    events = extract_insider_events(_record(), _Form4(payload))
+    events = extract_insider_events(_record(), Form4Stub(payload))
     assert all(event.as_of == _record().as_of for event in events)
 
 
 def test_a_plan_filing_marks_every_event_as_scheduled():
     payload = json.loads(PLAN_TRADE.read_text())
-    events = extract_insider_events(_record(), _Form4(payload))
+    events = extract_insider_events(_record(), Form4Stub(payload))
     assert events
     assert all(event.is_10b5_1 for event in events)
     assert not any(is_candidate(event, MIN_VALUE) for event in events)

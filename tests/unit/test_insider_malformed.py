@@ -18,20 +18,10 @@ from arbiter.events.insider import (
     is_candidate,
 )
 from arbiter.ingestion.edgar import FilingRecord
+from tests.unit.form4_stub import Form4Stub
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "form4_open_market.json"
 MIN_VALUE = Decimal("50000")
-
-
-class _Form4:
-    def __init__(self, payload: dict) -> None:
-        self._payload = payload
-        self.aff10b5_one = payload["aff10b5_one"]
-
-    def to_dataframe(self):
-        import pandas as pd
-
-        return pd.DataFrame(self._payload["rows"])
 
 
 def _record() -> FilingRecord:
@@ -60,7 +50,7 @@ def test_a_holdings_row_beside_a_real_trade_does_not_abort_the_filing():
     holdings.update({"Insider": real["Insider"], "Position": real["Position"]})
     payload["rows"] = [real, holdings]
 
-    events = extract_insider_events(_record(), _Form4(payload))
+    events = extract_insider_events(_record(), Form4Stub(payload))
 
     assert len(events) == 1
     assert events[0].transaction_code == "P"
@@ -69,12 +59,12 @@ def test_a_holdings_row_beside_a_real_trade_does_not_abort_the_filing():
 def test_a_thousands_separator_raises_rather_than_dropping_the_trade():
     """Treating it as blank would drop a qualifying purchase, with a filer bias."""
     with pytest.raises(ValueError, match="unparseable"):
-        extract_insider_events(_record(), _Form4(_payload(Value="101,430.00")))
+        extract_insider_events(_record(), Form4Stub(_payload(Value="101,430.00")))
 
 
 def test_a_currency_symbol_raises_rather_than_dropping_the_price():
     with pytest.raises(ValueError, match="unparseable"):
-        extract_insider_events(_record(), _Form4(_payload(Price="$67.62")))
+        extract_insider_events(_record(), Form4Stub(_payload(Price="$67.62")))
 
 
 def test_a_non_finite_share_count_raises():
@@ -84,12 +74,12 @@ def test_a_non_finite_share_count_raises():
     above; this covers a value that is genuinely present and genuinely unusable.
     """
     with pytest.raises(ValueError, match="finite"):
-        extract_insider_events(_record(), _Form4(_payload(Shares="Infinity")))
+        extract_insider_events(_record(), Form4Stub(_payload(Shares="Infinity")))
 
 
 def test_a_blank_share_count_raises_where_a_value_is_always_reported():
     with pytest.raises(ValueError, match="Shares"):
-        extract_insider_events(_record(), _Form4(_payload(Shares="", Code="P")))
+        extract_insider_events(_record(), Form4Stub(_payload(Shares="", Code="P")))
 
 
 def test_a_missing_ticker_raises_rather_than_becoming_a_string():
@@ -99,12 +89,12 @@ def test_a_missing_ticker_raises_rather_than_becoming_a_string():
     well formed, and the filer simply has no listed common stock.
     """
     with pytest.raises(UnpriceableIssuerError, match="Ticker"):
-        extract_insider_events(_record(), _Form4(_payload(Ticker=None)))
+        extract_insider_events(_record(), Form4Stub(_payload(Ticker=None)))
 
 
 def test_a_well_formed_row_still_produces_a_candidate():
     """Regression guard: the stricter parsing must not reject valid filings."""
-    events = extract_insider_events(_record(), _Form4(_payload()))
+    events = extract_insider_events(_record(), Form4Stub(_payload()))
 
     assert len(events) == 1
     assert is_candidate(events[0], MIN_VALUE)

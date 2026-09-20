@@ -25,7 +25,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, cast
 
@@ -70,6 +70,12 @@ def _canonical(value: Any) -> Any:
             )
             raise UnhashableValueError(msg)
         return value.astimezone(UTC).isoformat()
+    # Tested after `datetime`, which subclasses `date`: reversed, every instant
+    # would hash as its calendar day and two filings hours apart would collide.
+    if isinstance(value, date):
+        # A session is a calendar day in the market's timezone, not an instant,
+        # so it is rendered as one rather than given a spurious midnight.
+        return value.isoformat()
     if isinstance(value, Mapping):
         mapping = cast("Mapping[Any, Any]", value)
         return {str(key): _canonical(mapping[key]) for key in sorted(mapping, key=str)}

@@ -133,6 +133,51 @@ def resolve(
     typer.echo(f"labels-{domain}: {written}")
 
 
+@app.command(name="build-packets")
+def build_packets(
+    day: str,
+    root: str = "data/events",
+    packet_root: str = "data/packets",
+) -> None:
+    """Build one stored day's evidence packets.
+
+    A packet is built for every stored event, not only for events whose outcome
+    has resolved. A packet records what was knowable at the filing, and whether
+    its label exists yet is a fact about the calendar — so this pass reads the
+    event store and never the label store, and its output does not depend on
+    when it was run.
+
+    Events with no tradeable symbol, or whose issuer returned no price history,
+    are reported here rather than silently absent from the day.
+    """
+    from arbiter.packets.pipeline import UnsupportedPacketDomainError, build_day
+
+    today = current_session_date()
+
+    def fetch(symbols: Sequence[str], start: date, end: date) -> dict[str, list[Bar]]:
+        return daily_bars_tolerating_gaps(list(symbols), start, end, today)
+
+    try:
+        written, excluded = build_day(
+            date.fromisoformat(day),
+            Path(root),
+            Path(packet_root),
+            fetch_bars=fetch,
+            benchmark_for=benchmark_for_issuer,
+        )
+    except UnsupportedPacketDomainError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+
+    typer.echo(f"packets: {written}")
+    if excluded:
+        typer.echo(f"excluded: {len(excluded)}")
+        for record in excluded[:10]:
+            typer.echo(f"  {record['accession_no']}: {record['reason']}")
+        if len(excluded) > 10:
+            typer.echo(f"  ... and {len(excluded) - 10} more")
+
+
 @app.command()
 def report(
     domain: str = "insider",
@@ -183,6 +228,8 @@ def backfill(
     every: int = 1,
     root: str = "data/events",
     min_value_usd: str = "50000",
+    with_packets: bool = False,
+    packet_root: str = "data/packets",
 ) -> None:
     """Build a history by ingesting and labeling a range of trading days.
 
@@ -193,23 +240,66 @@ def backfill(
     day share a market factor that the sector benchmark only partly removes.
 
     Days already stored are skipped, so an interrupted run is simply restarted.
+    With `--with-packets`, evidence packets are built for each day as it lands
+    and a day counts as stored only once its packets exist.
     """
     days = sampled_trading_days(date.fromisoformat(start), date.fromisoformat(end), every)
     ingest_step, resolve_step = ingest_and_resolve(Path(root), Decimal(min_value_usd))
 
     typer.echo(f"{len(days)} trading days from {days[0]} to {days[-1]}" if days else "no days")
 
+    from arbiter.ingestion.backfill import day_is_packed
+    from arbiter.packets.pipeline import build_day as build_packet_day
+
+    today = current_session_date()
+
+    def fetch(
+        symbols: Sequence[str], window_start: date, window_end: date
+    ) -> dict[str, list[Bar]]:
+        return daily_bars_tolerating_gaps(list(symbols), window_start, window_end, today)
+
+    def pack(day: date) -> int:
+        written, excluded = build_packet_day(
+            day,
+            Path(root),
+            Path(packet_root),
+            fetch_bars=fetch,
+            benchmark_for=benchmark_for_issuer,
+        )
+        # `build_day` persists the exclusions beside the packets; this line only
+        # surfaces them in the run's own output. Discarding the second element
+        # here once meant a backfill reported a count and nothing else, leaving
+        # the difference between the event store and the packet store
+        # unexplained for every day it wrote.
+        if excluded:
+            typer.echo(f"  {day.isoformat()}: {len(excluded)} events excluded from packets")
+        return written
+
+    def stored_without_packets(day: date) -> bool:
+        return day_is_stored(Path(root), day)
+
+    def stored_with_packets(day: date) -> bool:
+        # The resume rule tightens with the work: a day whose packet build
+        # failed still has its events and labels, and the looser rule would call
+        # it finished and skip it forever.
+        return day_is_packed(Path(root), Path(packet_root), day)
+
+    pack_step = pack if with_packets else None
+    stored = stored_with_packets if with_packets else stored_without_packets
+
     summary = run_backfill(
         days,
         ingest=ingest_step,
         resolve=resolve_step,
-        is_stored=lambda day: day_is_stored(Path(root), day),
+        is_stored=stored,
+        pack=pack_step,
         on_progress=typer.echo,
     )
 
     typer.echo(
         f"completed: {len(summary.completed)}  skipped: {len(summary.skipped)}  "
         f"failed: {len(summary.failed)}  events: {summary.events}  labels: {summary.labels}"
+        + (f"  packets: {summary.packets}" if with_packets else "")
     )
     for day, cause in sorted(summary.failed.items()):
         typer.echo(f"  {day.isoformat()}: {cause}", err=True)

@@ -119,6 +119,23 @@ def test_the_window_starts_before_the_filing_so_the_entry_session_is_inside_it()
     assert start < event.as_of.date()
 
 
+def test_the_window_does_not_fetch_history_that_labelling_discards():
+    """Backward bars are dropped by `entry_sessions`, so fetching them is waste.
+
+    Pinned because widening this lead to serve packet construction is an
+    appealing and wrong idea: this window is planned over the events resolvable
+    today, while a packet must exist for every event whether or not its outcome
+    can be measured yet.
+    """
+    event = _event(datetime(2026, 8, 3, 20, 47, tzinfo=UTC))
+
+    start, _ = plan_price_windows([event])["MO"]
+
+    assert (event.as_of.date() - start).days <= 10, (
+        "the lead only has to reach the entry session; labelling reads no bar before the event"
+    )
+
+
 def test_one_window_per_symbol_still_covers_every_events_horizon():
     """Merging windows must widen them, never clip one to fit another."""
     early = _event(datetime(2026, 3, 2, 23, 0, tzinfo=UTC))

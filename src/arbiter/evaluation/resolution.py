@@ -38,8 +38,19 @@ HORIZONS = {"insider": 5, "redflag": 20}
 #: slightly too long costs nothing but a few unused bars.
 _WINDOW_SLACK_SESSIONS = 3
 
-#: Sessions of price history fetched before the first event, so the entry
-#: session that follows a filing is always inside the window.
+#: Calendar days of price history fetched before an event, so that the entry
+#: session following a filing is inside the window.
+#:
+#: Kept small on purpose. Packet construction reads backwards from an event and
+#: labelling reads forwards, and it is tempting to widen this so one fetch could
+#: serve both. It cannot, for a reason that outranks the saving: this window is
+#: planned over the events that are *resolvable today*, and a packet must exist
+#: for every event regardless of whether its outcome can be measured yet. Sharing
+#: the fetch would tie a packet's existence to label availability, which is the
+#: same coupling that once computed features over only the labelled subset of a
+#: day. Packet construction plans its own window, and `entry_sessions` discards
+#: every bar before the event anyway, so anything wider than this is fetched and
+#: thrown away.
 _LEAD_DAYS = 5
 
 
@@ -120,6 +131,11 @@ def plan_price_windows(
     A day's filings concentrate in far fewer issuers than events, and each
     window covers every event for its symbol, so the number of price requests
     follows the number of distinct symbols rather than the number of events.
+
+    The window spans both directions a consumer reads in: backwards far enough
+    for the history a packet describes, forwards past the session the horizon
+    closes on. Splitting it would double the requests for the same symbols, and
+    requests are the constrained resource.
     """
     windows: dict[str, tuple[date, date]] = {}
     for event in events:

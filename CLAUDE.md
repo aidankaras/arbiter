@@ -56,6 +56,11 @@ Concretely:
 
 ## Reporting standards for anyone dispatching or reviewing work here
 
+Most of these describe one failure: **a check that passes without having run.** The
+test for whether a rule belongs here is to ask what the check would print if it had
+never happened. If that is the same thing it prints on success, it belongs, because
+nothing downstream can tell the two apart.
+
 - **A claimed test count is verified, not trusted.** Run `uv run pytest tests/unit -q`
   and read the tail line before treating any "N passed" as done. A report is the only
   evidence a reviewer has unless they rerun the suite themselves, and this project has
@@ -63,6 +68,39 @@ Concretely:
   traceback.
 - **A pinned Action SHA is verified against the source**, never copied from a plan or
   another repository: `gh api repos/<org>/<repo>/git/ref/tags/<tag> --jq .object.sha`.
+- **A mutation test clears `__pycache__` before it runs.** CPython decides a cached
+  module is current from the source's size and its modification time truncated to whole
+  seconds, so a mutation that preserves the byte count and is tested within a second of
+  being written executes the *previous* bytecode. The suite passes, and that outcome is
+  indistinguishable from a mutation the tests genuinely failed to catch. Flipping one
+  digit for another, or `<` for `>`, is size-preserving, which makes the sharpest
+  mutations the ones most likely to be reported wrongly:
+
+  Use `scripts/mutate.sh <file> "<old>" "<new>" "<label>"`, which clears the
+  cache, refuses a mutant that does not parse, and verifies the file was
+  restored. Each of those guards exists because its absence once produced a
+  result table that looked entirely normal and meant nothing.
+- **A comment explaining *why* is a second claim, and the tests do not check it.**
+  A passing suite confirms the conclusion and says nothing about the reason given for
+  it, so an explanation can be wrong in a file that is entirely correct — and it is
+  read by the next person as though it had been verified. This has already happened
+  here: a docstring justified hashing the packet in Python mode on the grounds that
+  JSON mode "would turn every price into a float", which is false. JSON mode renders a
+  `Decimal` to a string and loses no precision. The decision was right for a different
+  reason — it renders before the canonical form can normalise, so `1.50` and `1.5`
+  become two identities — and the stated reason would have taught a reader something
+  untrue about the serialiser. When a comment explains a mechanism, check the
+  mechanism.
+- **A review question is scoped to the unit you were thinking about**, and the
+  defects that survive review live at the seams between units. Both defects that
+  withdrew the first baseline result were found by the `pr-review-toolkit`
+  specialists rather than by the detailed, project-specific prompts written for
+  them — and one of those prompts asked about packet identity explicitly. It
+  could not reach a hash that depended on which *other* events shared the day,
+  because every field was hashed; the leak was in how one was derived. After
+  writing a review question, name the unit it covers and look one seam outward:
+  the caller, the level below, the empty input, the neighbour sharing state.
+  Fuller treatment in the `verification-discipline` skill.
 - **Planning documents live outside this repository.** The spec and phase plans are kept
   under `~/.claude/references/arbiter/`, never in this tree, so that planning context
   never reaches a public reader. Design reasoning that belongs to the system goes in
@@ -93,15 +131,44 @@ depends on trading halts concentrates on exactly the bad news being measured.
 When you find a data-handling bug, the question is not "how big" but "is it
 correlated with the outcome".
 
+The sharpest instance so far withdrew a published report. One transaction filed
+by three joint owners was stored as three events, and joint filing is how funds,
+groups and ten-percent owners file while officers file alone — so the
+over-weighting tracked filer type, which is the property the study asks the data
+to discriminate on. A second, older defect stored a filing's single qualifying
+transaction once per line on the form, inflating the event store by a factor
+averaging 2.94 and ranging from 2.34 to 4.59 across days. Both produced
+plausible datasets; the second was found only because a day's packets yielded
+fewer distinct hashes than packets.
+
 **A test must not restate the implementation.** A twenty-case parameterised
 test written to guard the window bug asserted that the window reached the
 expression the window is computed from — it read `x >= x` and passed on the
 defect. Derive a property from the requirement, never from the code. Prove a
 regression test bites by replaying the old behaviour.
 
-**Unit tests here have never caught a real defect.** Every one surfaced in a
-live run. A mutation audit found 9 of 22 semantic mutations surviving the whole
-suite. Run `pytest -m integration` before believing anything works.
+**Hand-built fixtures encode what a filing was assumed to contain.** Every
+ingestion defect found here surfaced in a live run rather than in a test, and
+that is the reason: a test that constructs a Form 4 table tests the shape its
+author already had in mind, and the filings that break things have the shape
+nobody anticipated — several transactions of which one clears the threshold,
+one transaction reported once per joint owner, a conversion carrying no price.
+
+`tests/unit/test_form4_contract.py` reads tables recorded from EDGAR and
+committed under `tests/fixtures/form4/`, with each filing's expected event count
+pinned. Add a fixture with `tests/fixtures/form4/record.py` whenever a filing
+exhibits a shape the suite does not cover, and name in the test what that shape
+is. A diff in a fixture is a change in the upstream contract and is reviewed as
+one, never refreshed away.
+
+An early mutation audit reported 9 of 22 semantic mutations surviving the suite,
+and that figure is no longer cited because the mutations behind it were never
+written down. It cannot be reproduced, and it was produced without clearing the
+bytecode cache, which biases such a count toward *over*-stating weakness: a
+size-preserving mutation that never took effect leaves the suite green and is
+recorded as one the tests failed to catch. A summary that outlives its evidence
+is an anecdote, whichever direction it errs in — record the mutation list with
+the count, or report neither.
 
 ## Engineering standards
 
