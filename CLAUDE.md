@@ -76,10 +76,10 @@ nothing downstream can tell the two apart.
   digit for another, or `<` for `>`, is size-preserving, which makes the sharpest
   mutations the ones most likely to be reported wrongly:
 
-  ```bash
-  find . -name __pycache__ -type d -prune -exec rm -rf {} +
-  uv run pytest tests/unit -q -p no:cacheprovider
-  ```
+  Use `scripts/mutate.sh <file> "<old>" "<new>" "<label>"`, which clears the
+  cache, refuses a mutant that does not parse, and verifies the file was
+  restored. Each of those guards exists because its absence once produced a
+  result table that looked entirely normal and meant nothing.
 - **A comment explaining *why* is a second claim, and the tests do not check it.**
   A passing suite confirms the conclusion and says nothing about the reason given for
   it, so an explanation can be wrong in a file that is entirely correct — and it is
