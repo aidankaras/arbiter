@@ -259,13 +259,20 @@ def backfill(
         return daily_bars_tolerating_gaps(list(symbols), window_start, window_end, today)
 
     def pack(day: date) -> int:
-        written, _ = build_packet_day(
+        written, excluded = build_packet_day(
             day,
             Path(root),
             Path(packet_root),
             fetch_bars=fetch,
             benchmark_for=benchmark_for_issuer,
         )
+        # `build_day` persists the exclusions beside the packets; this line only
+        # surfaces them in the run's own output. Discarding the second element
+        # here once meant a backfill reported a count and nothing else, leaving
+        # the difference between the event store and the packet store
+        # unexplained for every day it wrote.
+        if excluded:
+            typer.echo(f"  {day.isoformat()}: {len(excluded)} events excluded from packets")
         return written
 
     def stored_without_packets(day: date) -> bool:

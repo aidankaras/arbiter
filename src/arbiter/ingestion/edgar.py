@@ -142,7 +142,9 @@ def records_from_filings(
     """Convert client filings into records, reporting those that carry no time.
 
     Returns the records that could be timestamped, each with its source filing,
-    and the accession numbers of those that could not.
+    and the accession numbers of those that could not. A filing appearing more
+    than once in the day's index — as a jointly filed Form 4 does, once per
+    reporting owner — yields one record.
 
     A filing with no acceptance time cannot be placed in time and so cannot
     become an event, but it is one filing among thousands accepted the same day.
@@ -159,12 +161,28 @@ def records_from_filings(
     """
     records: list[tuple[FilingRecord, Any]] = []
     untimestamped: list[str] = []
+    seen: set[str] = set()
 
     for filing in filings:
+        accession_no = str(filing.accession_no)
+        # A day's index lists a Form 4 once per reporting-owner CIK, so a filing
+        # submitted jointly by three related entities appears three times. They
+        # are the same document describing the same transactions, and ingesting
+        # each appearance turned one transaction into three events.
+        #
+        # The duplicates are not harmless beyond the count. The CIK on each entry
+        # is that entry's filer rather than the issuer, and the sector benchmark
+        # is looked up by CIK — so a reporting owner resolved to no sector and
+        # fell back to the broad market, leaving duplicate rows measured against
+        # SPY while the issuer resolved to its sector ETF.
+        if accession_no in seen:
+            continue
+        seen.add(accession_no)
+
         try:
             records.append((to_record(filing), filing))
         except MissingAcceptanceTimeError:
-            untimestamped.append(str(filing.accession_no))
+            untimestamped.append(accession_no)
 
     return records, untimestamped
 

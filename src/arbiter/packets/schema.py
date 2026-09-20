@@ -109,9 +109,11 @@ class MarketSummary(_Frozen):
     trailing_return_21d: Decimal | None = None
     #: Standard deviation of daily returns over the same window, annualised.
     realised_volatility_21d: Decimal | None = None
-    #: Where the most recent session's volume falls in the trailing 63, as a
-    #: fraction in [0, 1]. Unusual volume before a filing is the kind of context
-    #: a reader would want and a fitted feature set does not currently hold.
+    #: Where the most recent session's volume falls in the trailing 63, as the
+    #: fraction of that window at or below it. The session counts itself, so the
+    #: value runs from 1/63 to 1 and is never 0. Unusual volume before a filing
+    #: is the kind of context a reader would want and a fitted feature set does
+    #: not currently hold.
     volume_percentile_63d: Decimal | None = None
 
 

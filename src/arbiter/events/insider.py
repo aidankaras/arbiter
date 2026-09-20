@@ -40,6 +40,12 @@ _IDENTITY_COLUMNS = (
     "Issuer",
     "Insider",
     "Position",
+    # Required, not optional, because the row identity below is built from it.
+    # Read with `.get` it would degrade to the string "None" for every row if
+    # the column were ever renamed upstream, silently narrowing the identity and
+    # merging trades made on different days into one event — with no error, and
+    # with a comment still asserting the date is part of the key.
+    "Date",
 )
 
 _REQUIRED_COLUMNS = _TRANSACTION_COLUMNS + _IDENTITY_COLUMNS
@@ -180,6 +186,14 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
     frame = form4.to_dataframe()
     is_plan_trade = bool(form4.aff10b5_one)
 
+    # The issuer's CIK, not the filing record's. A day's index lists a Form 4
+    # once per reporting-owner CIK, so the record may carry an owner's identity
+    # rather than the company's — and the sector benchmark is looked up by CIK,
+    # where an owner resolves to nothing and falls back to the broad market.
+    # Events for one issuer would then be measured against different benchmarks
+    # depending on which index entry they happened to arrive through.
+    issuer_cik = int(form4.issuer.cik)
+
     events: list[InsiderEvent] = []
     # One transaction reported jointly appears once per reporting owner, with
     # the owners collapsed into a single name string — so a fund's purchase
@@ -227,7 +241,7 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
             raise UnpriceableIssuerError(msg)
 
         identity = tuple(
-            str(row.get(column))
+            str(row[column])
             for column in (
                 "Insider",
                 "Code",
@@ -246,7 +260,7 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
             InsiderEvent(
                 accession_no=record.accession_no,
                 as_of=record.as_of,
-                cik=record.cik,
+                cik=issuer_cik,
                 ticker=ticker,
                 issuer=str(row["Issuer"]),
                 insider_name=str(row["Insider"]),

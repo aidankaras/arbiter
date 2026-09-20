@@ -37,6 +37,11 @@ def record(accession_no: str, into: Path) -> Path:
         "as_of": identity.as_of.isoformat(),
         "filing_date": identity.filing_date.isoformat(),
         "aff10b5_one": bool(parsed.aff10b5_one),
+        # The issuer's own CIK, which is not the filing record's: a day's index
+        # lists a Form 4 once per reporting owner, so the record may carry an
+        # owner's identity while the sector benchmark is looked up by issuer.
+        "issuer_cik": int(parsed.issuer.cik),
+        "issuer_ticker": str(parsed.issuer.ticker),
         "rows": json.loads(parsed.to_dataframe().to_json(orient="records", date_format="iso")),
     }
 

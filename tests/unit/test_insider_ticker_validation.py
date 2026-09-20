@@ -14,19 +14,9 @@ import pytest
 
 from arbiter.events.insider import UnpriceableIssuerError, extract_insider_events
 from arbiter.ingestion.edgar import FilingRecord
+from tests.unit.form4_stub import Form4Stub
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "form4_open_market.json"
-
-
-class _Form4:
-    def __init__(self, payload: dict) -> None:
-        self._payload = payload
-        self.aff10b5_one = payload["aff10b5_one"]
-
-    def to_dataframe(self):
-        import pandas as pd
-
-        return pd.DataFrame(self._payload["rows"])
 
 
 def _record() -> FilingRecord:
@@ -40,10 +30,10 @@ def _record() -> FilingRecord:
     )
 
 
-def _with_ticker(value: object) -> _Form4:
+def _with_ticker(value: object) -> Form4Stub:
     payload = json.loads(FIXTURE.read_text())
     payload["rows"] = [{**payload["rows"][0], "Ticker": value}]
-    return _Form4(payload)
+    return Form4Stub(payload)
 
 
 @pytest.mark.parametrize(

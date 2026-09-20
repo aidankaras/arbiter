@@ -5,22 +5,10 @@ from pathlib import Path
 
 from arbiter.events.insider import extract_insider_events, is_candidate
 from arbiter.ingestion.edgar import FilingRecord
+from tests.unit.form4_stub import Form4Stub
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "form4_unpriced.json"
 MIN_VALUE = Decimal("50000")
-
-
-class _Form4:
-    """Stands in for the parsed filing, exposing only what the extractor reads."""
-
-    def __init__(self, payload: dict) -> None:
-        self._payload = payload
-        self.aff10b5_one = payload["aff10b5_one"]
-
-    def to_dataframe(self):
-        import pandas as pd
-
-        return pd.DataFrame(self._payload["rows"])
 
 
 def _record() -> FilingRecord:
@@ -35,7 +23,7 @@ def _record() -> FilingRecord:
 
 
 def _events():
-    return extract_insider_events(_record(), _Form4(json.loads(FIXTURE.read_text())))
+    return extract_insider_events(_record(), Form4Stub(json.loads(FIXTURE.read_text())))
 
 
 def test_an_unpriced_transaction_does_not_crash_extraction():
@@ -71,7 +59,7 @@ def test_a_blank_post_transaction_holding_is_recorded_as_absent():
     payload = json.loads(FIXTURE.read_text())
     payload["rows"] = [{**payload["rows"][0], "Remaining Shares": "None"}]
 
-    events = extract_insider_events(_record(), _Form4(payload))
+    events = extract_insider_events(_record(), Form4Stub(payload))
 
     assert events[0].remaining_shares is None
 
@@ -80,6 +68,6 @@ def test_a_reported_remaining_holding_is_preserved():
     payload = json.loads(FIXTURE.read_text())
     payload["rows"] = [{**payload["rows"][0], "Remaining Shares": "4200"}]
 
-    events = extract_insider_events(_record(), _Form4(payload))
+    events = extract_insider_events(_record(), Form4Stub(payload))
 
     assert events[0].remaining_shares == Decimal("4200")

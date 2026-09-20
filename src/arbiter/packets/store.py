@@ -41,11 +41,17 @@ from arbiter.packets.schema import EvidencePacket
 
 
 class PacketIntegrityError(RuntimeError):
-    """Raised when a stored packet does not hash to the value it was stored as.
+    """Raised when a stored line does not survive parsing and re-rendering.
 
-    Either the file was altered after it was written or the packet's canonical
-    form has changed between versions. Both invalidate every prediction that
-    cites the affected hash, so neither may be repaired silently.
+    This is *not* tamper detection and must not be read as it: an edit leaving
+    valid JSON re-serialises to itself and loads without complaint. What it
+    catches is a stored form that parsing alters — the shape a change to the
+    canonical form between versions would take — which would shift every hash in
+    the partition and break the link between a prediction and its input.
+
+    Tampering surfaces elsewhere, at the prediction that recorded the earlier
+    hash. An earlier version of this docstring claimed otherwise; the test that
+    proves it wrong is in `tests/unit/test_packet_store.py`.
     """
 
 

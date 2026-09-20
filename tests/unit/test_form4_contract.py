@@ -19,31 +19,20 @@ diff in a fixture is a change in the upstream contract and is reviewed as one.
 import json
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 import pytest
 
 from arbiter.events.insider import extract_insider_events, is_candidate
 from arbiter.ingestion.edgar import FilingRecord
+from tests.unit.form4_stub import Form4Stub
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "form4"
 
 THRESHOLD = Decimal("50000")
 
 
-class _RecordedForm4:
-    """Stands in for a parsed filing, serving a table recorded from EDGAR."""
-
-    def __init__(self, payload: dict[str, Any]) -> None:
-        self._frame = pd.DataFrame(payload["rows"])
-        self.aff10b5_one = payload["aff10b5_one"]
-
-    def to_dataframe(self) -> pd.DataFrame:
-        return self._frame
-
-
-def _load(accession: str) -> tuple[FilingRecord, _RecordedForm4]:
+def _load(accession: str) -> tuple[FilingRecord, Form4Stub]:
     payload = json.loads((FIXTURES / f"{accession}.json").read_text())
     record = FilingRecord(
         accession_no=payload["accession_no"],
@@ -53,7 +42,7 @@ def _load(accession: str) -> tuple[FilingRecord, _RecordedForm4]:
         as_of=pd.Timestamp(payload["as_of"]).to_pydatetime(),
         filing_date=pd.Timestamp(payload["filing_date"]).date(),
     )
-    return record, _RecordedForm4(payload)
+    return record, Form4Stub(payload)
 
 
 def _candidates(accession: str):
@@ -175,7 +164,7 @@ def test_two_trades_differing_only_by_date_stay_two_events():
         }
         for day in ("2026-03-02", "2026-03-03")
     ]
-    form4 = _RecordedForm4({"rows": rows, "aff10b5_one": False})
+    form4 = Form4Stub({"rows": rows, "aff10b5_one": False, "issuer_cik": 764180})
 
     events = extract_insider_events(record, form4)
 
@@ -206,3 +195,35 @@ def test_no_two_candidates_from_one_filing_are_identical():
             f"{path.stem} produced duplicate candidates, which would weight one "
             "transaction more than once"
         )
+
+
+def test_an_event_carries_the_issuers_cik_not_the_index_entrys():
+    """The CIK decides the benchmark, so the wrong one changes the measurement.
+
+    NET Power's Form 4 appears in the day's index three times, under CIKs
+    1981100, 1973442 and 1845437. Only the last is the issuer; the others are
+    reporting owners, and `benchmark_for_issuer` resolves them to no sector and
+    falls back to the broad market. Events from the same filing were therefore
+    measured against SPY or XLK depending on which index entry they arrived
+    through, and an abnormal return against the wrong benchmark is not
+    comparable with one against the right one.
+    """
+    events, _ = _candidates("0001104659-26-022377")
+
+    assert {event.cik for event in events} == {1845437}
+
+
+def test_the_issuer_cik_resolves_to_a_sector_rather_than_the_broad_market():
+    """The consequence, asserted rather than assumed.
+
+    A fallback to SPY is a legitimate answer for an issuer with no sector
+    mapping, which is exactly why it cannot be distinguished from a lookup made
+    with the wrong CIK unless something pins it.
+    """
+    from arbiter.ingestion.sectors import benchmark_for_issuer
+
+    events, _ = _candidates("0001104659-26-022377")
+    (cik,) = {event.cik for event in events}
+
+    assert benchmark_for_issuer(cik) == "XLK"
+    assert benchmark_for_issuer(1973442) == "SPY", "a reporting owner, for contrast"

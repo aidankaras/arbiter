@@ -18,10 +18,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date, timedelta
+from decimal import InvalidOperation
 from pathlib import Path
 from typing import Any
 
-from arbiter.ingestion.market import Bar, tradeable_symbol
+from arbiter.ingestion.market import Bar, closed_bars, tradeable_symbol
 from arbiter.packets.build import build_packet
 from arbiter.packets.schema import EvidencePacket
 from arbiter.packets.store import write_packets
@@ -77,7 +78,7 @@ def build_day(
     Raises:
         UnsupportedPacketDomainError: the domain has no extract model.
     """
-    from arbiter.ingestion.store import read_events
+    from arbiter.ingestion.store import read_events, write_unpriceable
 
     if domain != "insider":
         msg = (
@@ -118,27 +119,46 @@ def build_day(
         series = fetch_bars(symbols, earliest - timedelta(days=HISTORY_DAYS), latest)
 
         for row, symbol in usable:
-            bars = series.get(symbol, [])
+            # Truncated here rather than left to `build_packet`, because the
+            # emptiness test below has to run on what the packet will actually
+            # hold. A series that is non-empty but lies entirely after the event
+            # passes a test on the vendor's rows and truncates to nothing, which
+            # writes exactly the packet this guard exists to prevent: hashed,
+            # citable, and carrying no market evidence at all.
+            bars = closed_bars(series.get(symbol, []), row["as_of"])
             if not bars:
-                # A packet with no price history is still evidence — the filing
-                # itself — but it carries no market context at all, so it is
-                # recorded here rather than written as an ordinary packet whose
-                # every statistic happens to be absent.
                 excluded.append(
                     {
                         "accession_no": str(row["accession_no"]),
-                        "reason": f"no price history for {symbol}",
+                        "reason": f"no price history for {symbol} before the event",
                     }
                 )
                 continue
-            packets.append(
-                build_packet(
-                    row,
-                    bars,
-                    domain=domain,
-                    sector_etf=benchmark_for(int(row["cik"])),
+            try:
+                packets.append(
+                    build_packet(
+                        row,
+                        bars,
+                        domain=domain,
+                        sector_etf=benchmark_for(int(row["cik"])),
+                    )
                 )
-            )
+            except (InvalidOperation, TypeError, ValueError) as error:
+                # One malformed row must cost one event, not the day. Reaching
+                # here without a handler aborted `build_day` before any packet
+                # was written, so a single unparseable price discarded every
+                # other packet on the day along with it.
+                excluded.append(
+                    {
+                        "accession_no": str(row["accession_no"]),
+                        "reason": f"{type(error).__name__}: {error}",
+                    }
+                )
 
     write_packets(packets, packet_root, domain, day)
+    # Written for every day, including days that excluded nothing, for the same
+    # reason an empty partition is still written: a day thinned by unpriceable
+    # issuers must not look identical to a quiet one. Echoing the list to stdout
+    # left the distinction in a terminal scrollback.
+    write_unpriceable(excluded, packet_root, domain, day, stage="packets")
     return len(packets), excluded
