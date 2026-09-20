@@ -246,3 +246,23 @@ def test_a_non_positive_close_reports_no_return_rather_than_a_meaningless_one():
 
 def test_the_packet_built_from_a_row_hashes_stably():
     assert _packet().content_hash == _packet().content_hash
+
+
+def test_a_bar_whose_utc_date_differs_from_its_session_is_dated_by_the_session():
+    """The case the 05:00 UTC fixture cannot reach.
+
+    05:00 UTC is 00:00 EST or 01:00 EDT — the same Eastern date all year — so a
+    test built on that stamp passes whether or not the conversion happens.
+    03:00 UTC is 23:00 Eastern on the *previous* day, which is the only shape
+    that distinguishes the two.
+    """
+    late = Bar(
+        timestamp=datetime(2026, 7, 14, 3, 0, tzinfo=UTC),  # 23:00 EDT on the 13th
+        open=Decimal("1"),
+        high=Decimal("1"),
+        low=Decimal("1"),
+        close=Decimal("1"),
+        volume=Decimal("1"),
+    )
+
+    assert to_session_bar(late).session == date(2026, 7, 13)

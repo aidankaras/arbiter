@@ -60,7 +60,6 @@ first module is:
 
 | Planned module | Responsibility |
 |---|---|
-| `packets.build` | Assembling a packet from a stored event and its price history |
 | `retrieval` | Vector and relational comparable lookup, as-of filtering |
 | `arms` (language-model arms) | The three model-driven approaches; only the conventional baseline exists |
 | `portfolio` | Sizing, risk limits, shadow books, broker adapter |

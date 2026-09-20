@@ -59,9 +59,15 @@ _SESSIONS_PER_YEAR = 252
 def to_session_bar(bar: Bar) -> SessionBar:
     """Convert a vendor bar into the packet's own bar type.
 
-    The session is the bar's date in the market's timezone, not in UTC: a bar
-    stamped at 05:00 UTC belongs to the previous Eastern day for part of the
-    year, and dating it by UTC would shift roughly a third of the calendar.
+    The session is the bar's date in the market's timezone, not in UTC.
+
+    The vendor stamps a daily bar at its session's start, which is 05:00 UTC —
+    00:00 EST or 01:00 EDT, the same Eastern date all year, so that particular
+    stamp is not itself ambiguous. The conversion is here for the convention
+    that would be: a bar stamped 00:00 UTC falls on the previous Eastern day
+    every day of the year, and dating such a series by its UTC date would move
+    every bar one session earlier. Nothing in the vendor's contract pins which
+    convention it uses, so the packet does not depend on it.
     """
     return SessionBar(
         session=bar.timestamp.astimezone(SEC_TIMEZONE).date(),
