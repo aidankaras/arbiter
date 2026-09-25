@@ -102,7 +102,7 @@ nothing downstream can tell the two apart.
   the caller, the level below, the empty input, the neighbour sharing state.
   Fuller treatment in the `verification-discipline` skill.
 - **Planning documents live outside this repository.** The spec and phase plans are kept
-  under `~/.claude/references/arbiter/`, never in this tree, so that planning context
+  under `~/Base/references/arbiter/`, never in this tree, so that planning context
   never reaches a public reader. Design reasoning that belongs to the system goes in
   `docs/`; reasoning about why the project exists does not go in the repository at all.
 

@@ -45,3 +45,6 @@ models/
 .vscode/
 requirements-audit.txt
 requirements-export.txt
+
+# Claude Code per-user settings
+.claude/settings.local.json
