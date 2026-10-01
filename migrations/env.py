@@ -12,6 +12,10 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+# Importing the models registers their tables on `Base.metadata`. Without it the
+# target schema is empty, and `alembic revision --autogenerate` would propose
+# dropping every table in the ledger.
+import arbiter.db.models  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from arbiter.config import get_settings
 from arbiter.db.base import Base
 
