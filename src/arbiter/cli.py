@@ -24,6 +24,7 @@ from arbiter.arms.evaluate import (
 )
 from arbiter.arms.features import UnsupportedDomainError
 from arbiter.config import Settings, get_settings
+from arbiter.evaluation.figure import render_baseline_figure
 from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.resolution import HORIZONS, resolve_stored_day
 from arbiter.ingestion.backfill import backfill as run_backfill
@@ -226,6 +227,10 @@ def report(
     destination.write_text(
         render_baseline_report(evaluation, generated_on=current_session_date()),
         encoding="utf-8",
+    )
+    # Written from the same evaluation as the report, so the two cannot disagree.
+    destination.with_suffix(".svg").write_text(
+        render_baseline_figure(evaluation), encoding="utf-8"
     )
 
     typer.echo(

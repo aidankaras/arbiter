@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="340" viewBox="0 0 880 340" font-family='system-ui, -apple-system, "Segoe UI", sans-serif' role="img">
+<title>Baseline arm: insider transactions</title>
+<desc>Mean information coefficient +0.1209 (t = +3.09) over 11 scored days; calibration across 592 issuer-days.</desc>
+<rect x="0.5" y="0.5" width="879" height="339" rx="8" fill="#fcfcfb" stroke="#e1e0d9"/>
+<text x="24" y="34" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">Information coefficient by scored day</text>
+<text x="24" y="50" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal">Rank correlation across each day's issuers, 11 days</text>
+<line x1="68" y1="270" x2="492" y2="270" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="274" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">-0.2</text>
+<line x1="68" y1="235" x2="492" y2="235" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="239" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">-0.1</text>
+<line x1="68" y1="200" x2="492" y2="200" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="204" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">0</text>
+<line x1="68" y1="165" x2="492" y2="165" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="169" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">+0.1</text>
+<line x1="68" y1="130" x2="492" y2="130" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="134" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">+0.2</text>
+<line x1="68" y1="95" x2="492" y2="95" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="99" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">+0.3</text>
+<line x1="68" y1="60" x2="492" y2="60" stroke="#e1e0d9" stroke-width="1"/>
+<text x="60" y="64" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">+0.4</text>
+<rect x="68" y="130.4" width="424" height="54.7" fill="#52514e" fill-opacity="0.1"/>
+<g><title>2026-06-12: +0.1088</title><path d="M78.3,200 V165.9 A4,4 0 0 1 82.3,161.9 H92.3 A4,4 0 0 1 96.3,165.9 V200 Z" fill="#2a78d6"/></g>
+<text x="87.3" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">Jun 12</text>
+<g><title>2026-06-18: -0.1167</title><path d="M116.8,200 V236.8 A4,4 0 0 0 120.8,240.8 H130.8 A4,4 0 0 0 134.8,236.8 V200 Z" fill="#2a78d6"/></g>
+<g><title>2026-06-25: +0.0769</title><path d="M155.4,200 V177.1 A4,4 0 0 1 159.4,173.1 H169.4 A4,4 0 0 1 173.4,177.1 V200 Z" fill="#2a78d6"/></g>
+<text x="164.4" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">Jun 25</text>
+<g><title>2026-07-01: +0.1125</title><path d="M193.9,200 V164.6 A4,4 0 0 1 197.9,160.6 H207.9 A4,4 0 0 1 211.9,164.6 V200 Z" fill="#2a78d6"/></g>
+<g><title>2026-07-08: +0.0876</title><path d="M232.5,200 V173.3 A4,4 0 0 1 236.5,169.3 H246.5 A4,4 0 0 1 250.5,173.3 V200 Z" fill="#2a78d6"/></g>
+<text x="241.5" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">Jul 8</text>
+<g><title>2026-07-14: +0.3956</title><path d="M271,200 V65.5 A4,4 0 0 1 275,61.5 H285 A4,4 0 0 1 289,65.5 V200 Z" fill="#2a78d6"/></g>
+<g><title>2026-07-20: +0.1500</title><path d="M309.5,200 V151.5 A4,4 0 0 1 313.5,147.5 H323.5 A4,4 0 0 1 327.5,151.5 V200 Z" fill="#2a78d6"/></g>
+<text x="318.5" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">Jul 20</text>
+<g><title>2026-07-24: +0.2496</title><path d="M348.1,200 V116.6 A4,4 0 0 1 352.1,112.6 H362.1 A4,4 0 0 1 366.1,116.6 V200 Z" fill="#2a78d6"/></g>
+<g><title>2026-07-30: +0.0164</title><path d="M386.6,200 V197.1 A2.9,2.9 0 0 1 389.5,194.2 H401.8 A2.9,2.9 0 0 1 404.6,197.1 V200 Z" fill="#2a78d6"/></g>
+<text x="395.6" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">Jul 30</text>
+<g><title>2026-08-05: +0.1707</title><path d="M425.2,200 V144.2 A4,4 0 0 1 429.2,140.2 H439.2 A4,4 0 0 1 443.2,144.2 V200 Z" fill="#2a78d6"/></g>
+<g><title>2026-08-11: +0.0779</title><path d="M463.7,200 V176.7 A4,4 0 0 1 467.7,172.7 H477.7 A4,4 0 0 1 481.7,176.7 V200 Z" fill="#2a78d6"/></g>
+<text x="472.7" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">Aug 11</text>
+<line x1="68" y1="200" x2="492" y2="200" stroke="#c3c2b7" stroke-width="1"/>
+<line x1="68" y1="157.7" x2="492" y2="157.7" stroke="#0b0b0b" stroke-width="1.5"/>
+<text x="500" y="161.7" font-size="11" fill="#0b0b0b" text-anchor="start" font-weight="600">mean +0.121</text>
+<text x="500" y="134.4" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal">+2 SE</text>
+<text x="500" y="189" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal">-2 SE</text>
+<text x="604" y="34" font-size="13" fill="#0b0b0b" text-anchor="start" font-weight="600">Calibration by forecast band</text>
+<text x="604" y="50" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal">592 scored issuer-days</text>
+<line x1="648" y1="60" x2="648" y2="270" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="648" y1="270" x2="858" y2="270" stroke="#e1e0d9" stroke-width="1"/>
+<text x="648" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">0.3</text>
+<text x="640" y="274" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">0.3</text>
+<line x1="718" y1="60" x2="718" y2="270" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="648" y1="200" x2="858" y2="200" stroke="#e1e0d9" stroke-width="1"/>
+<text x="718" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">0.4</text>
+<text x="640" y="204" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">0.4</text>
+<line x1="788" y1="60" x2="788" y2="270" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="648" y1="130" x2="858" y2="130" stroke="#e1e0d9" stroke-width="1"/>
+<text x="788" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">0.5</text>
+<text x="640" y="134" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">0.5</text>
+<line x1="858" y1="60" x2="858" y2="270" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="648" y1="60" x2="858" y2="60" stroke="#e1e0d9" stroke-width="1"/>
+<text x="858" y="288" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">0.6</text>
+<text x="640" y="64" font-size="11" fill="#898781" text-anchor="end" font-weight="normal">0.6</text>
+<line x1="648" y1="270" x2="858" y2="60" stroke="#c3c2b7" stroke-width="1.5"/>
+<text x="753" y="306" font-size="11" fill="#898781" text-anchor="middle" font-weight="normal">Mean forecast</text>
+<text x="610" y="165" font-size="11" fill="#898781" text-anchor="middle" transform="rotate(-90 610 165)">Share that rose</text>
+<g><title>0.3 to 0.4: forecast 0.371, realised 0.377, 61 issuer-days</title><circle cx="697.8" cy="216.1" r="6.2" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/></g>
+<text x="708" y="220.1" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal">n=61</text>
+<g><title>0.4 to 0.5: forecast 0.442, realised 0.422, 445 issuer-days</title><circle cx="747.6" cy="184.3" r="10" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/></g>
+<text x="761.6" y="188.3" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal">n=445</text>
+<g><title>0.5 to 0.6: forecast 0.535, realised 0.500, 86 issuer-days</title><circle cx="812.3" cy="130" r="6.6" fill="#2a78d6" stroke="#fcfcfb" stroke-width="2"/></g>
+<text x="822.9" y="134" font-size="11" fill="#52514e" text-anchor="start" font-weight="normal">n=86</text>
+</svg>
