@@ -141,10 +141,10 @@ serving it requires no always-on host.
 ## Cost and safety controls
 
 - Every model call records model, input tokens, cached tokens, output tokens, and
-  computed cost, attributed to the run and agent that made it. Attribution to a
-  packet and a prediction is the goal and is not yet possible: the ledger table
-  carries no packet hash or prediction reference, so cost per decision cannot be
-  computed until those columns and the predictions that populate them exist.
+  computed cost, attributed to the run and agent that made it. The ledger also
+  carries a packet hash and a prediction reference, so cost per decision can be
+  computed once the language-model arms make calls against packets; until then
+  those columns are empty.
 - A per-run token ceiling terminates a run that exceeds it. A prompt requesting
   efficiency is advisory; a ceiling is enforced.
 - A daily spend ceiling halts the pipeline.
