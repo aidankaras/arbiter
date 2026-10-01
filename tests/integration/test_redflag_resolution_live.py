@@ -125,6 +125,6 @@ def test_unpriceable_issuers_are_recorded_rather_than_dropped(resolved: tuple[Pa
     """A filer with no listed security is a fact, and the record proves it was seen."""
     root, _ = resolved
 
-    record = root / "unpriceable" / "redflag" / f"{SETTLED_DAY.isoformat()}.json"
+    record = root / "unpriceable" / "labeling" / "redflag" / f"{SETTLED_DAY.isoformat()}.json"
 
     assert record.exists(), "every run records what it could not price, including none"

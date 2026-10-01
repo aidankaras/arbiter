@@ -90,7 +90,9 @@ def test_a_real_day_parses_without_systemic_rejections(
     quarantine = root / "rejected" / "insider" / f"{SETTLED_DAY.isoformat()}.json"
     assert quarantine.exists(), "every run records its rejections, including none"
 
-    unpriceable = root / "unpriceable" / "insider" / f"{SETTLED_DAY.isoformat()}.json"
+    unpriceable = (
+        root / "unpriceable" / "extraction" / "insider" / f"{SETTLED_DAY.isoformat()}.json"
+    )
     assert unpriceable.exists(), "every run records the filers it could not price"
 
 
