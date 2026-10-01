@@ -222,16 +222,14 @@ def report(
         typer.echo(f"refusing to score a day whose labels are stale: {exc}", err=True)
         raise typer.Exit(code=1) from None
 
+    # Both are rendered before either is written, so a failure in one cannot
+    # leave a new report beside a figure from an earlier run.
+    report_text = render_baseline_report(evaluation, generated_on=current_session_date())
+    figure = render_baseline_figure(evaluation)
     destination = Path(out) / f"baseline-{domain}.md"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(
-        render_baseline_report(evaluation, generated_on=current_session_date()),
-        encoding="utf-8",
-    )
-    # Written from the same evaluation as the report, so the two cannot disagree.
-    destination.with_suffix(".svg").write_text(
-        render_baseline_figure(evaluation), encoding="utf-8"
-    )
+    destination.write_text(report_text, encoding="utf-8")
+    destination.with_suffix(".svg").write_text(figure, encoding="utf-8")
 
     typer.echo(
         f"{destination}: IC {evaluation.ic.mean:+.4f} "

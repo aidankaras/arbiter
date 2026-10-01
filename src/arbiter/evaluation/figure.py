@@ -108,12 +108,14 @@ def _ic_panel(evaluation: Evaluation, left: float, top: float, width: float) -> 
     plot_top, plot_bottom = top + 40, top + 250
     plot_left, plot_right = left + 44, left + width - 92
     ic = evaluation.ic
-    days = sorted(evaluation.daily_ic)
+    # A day whose coefficient is undefined has nothing to draw, and the summary
+    # beside the bars already leaves it out of the mean.
+    days = sorted(day for day, value in evaluation.daily_ic.items() if not math.isnan(value))
     values = [evaluation.daily_ic[day] for day in days]
 
     band = (ic.mean - 2 * ic.standard_error, ic.mean + 2 * ic.standard_error)
     low = _floor_tenth(min(0.0, *values, band[0]))
-    high = _ceil_tenth(max(0.0, *values, band[1]))
+    high = max(_ceil_tenth(max(0.0, *values, band[1])), low + 0.1)
 
     def y(value: float) -> float:
         return plot_bottom - (value - low) / (high - low) * (plot_bottom - plot_top)
@@ -176,8 +178,11 @@ def _calibration_panel(evaluation: Evaluation, left: float, top: float) -> list[
     plot_left, plot_top = left + 44, top + 40
     plot_right, plot_bottom = plot_left + size, plot_top + size
 
-    low = _floor_tenth(min(band.lower for band in bands))
-    high = _ceil_tenth(max(band.upper for band in bands))
+    # The axes span the realised shares as well as the bands: a thin band at
+    # the edge of the forecast range can realise anything from 0 to 1.
+    extent = [value for band in bands for value in (band.lower, band.upper, band.realised)]
+    low = _floor_tenth(min(extent))
+    high = _ceil_tenth(max(extent))
 
     def x(value: float) -> float:
         return plot_left + (value - low) / (high - low) * size
