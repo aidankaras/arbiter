@@ -4,43 +4,29 @@ Logistic regression on filing characteristics, forecasting the sign of the
 five-session abnormal return. This is the control the language-model arms
 are measured against, not a proposed strategy.
 
-Generated 2026-09-19 from the event store.
-
-> **Withdrawn 2026-09-19. Do not cite any figure below.**
->
-> The event store this was computed from holds duplicated rows. A Form 4
-> reporting several transactions was stored as one copy of its single qualifying
-> transaction *per reported line*, so events are inflated by a factor that
-> averages 2.94 across the stored days and ranges from 2.34 to 4.59. The
-> duplicates are exact, which makes them perfectly correlated observations
-> counted as independent ones, and the factor varies by day — so the error is
-> correlated with how many lines a day's filings carried rather than spread
-> evenly across the sample.
->
-> The parser no longer does this; the stored days predate the fix and must be
-> re-ingested. Every count below is overstated, and every statistic computed per
-> event rather than per issuer-day rests on repeated rows. The report is left in
-> place rather than deleted so that what was claimed at this commit stays
-> inspectable, which is the same reason results are committed at all.
+Generated 2026-10-01 from the event store.
 
 ## Result
 
-**No measurable skill.** The mean information coefficient is +0.0308 against a standard error of 0.0581 (t = +0.53), which is indistinguishable from zero at the conventional threshold. With 11 scored days this is the expected outcome whether or not an edge exists; it is a statement about the sample, not evidence that no signal is there. Calibration is worse than that: a Brier skill of -0.0367 means the stated probabilities were less useful than forecasting the base rate of 46.2% for every event. The forecasts run low by 0.011 across the reliability bands below, weighted by the events in each, on balance, with 2 of 6 bands running the other way.
+**A positive information coefficient of +0.1209** (standard error 0.0391, t = +3.09) across 11 days. This clears the conventional two-standard-error threshold, which is a weak bar: it is one test on one sample, and the estimate should be expected to shrink as more days are added. Calibration is worse than that: a Brier skill of -0.0003 means the stated probabilities were less useful than forecasting the base rate of 42.9% for every event. The forecasts run high by 0.019 across the reliability bands below, weighted by the events in each, on balance, with 1 of 3 bands running the other way.
 
 ## What this rests on
 
 | | |
 |---|---|
-| Fitted on | 15 days, 7,296 events |
-| Scored on | 11 days, 4,712 events |
+| Fitted on | 17 days, 2,988 events |
+| Scored on | 11 days, 1,318 events |
 | Days contributing a rank correlation | 11 of 11 |
-| Scored observations | 1,732 issuer-days |
-| Fitting period | 2026-03-02 to 2026-05-27 |
-| Scoring period | 2026-06-08 to 2026-08-11 |
-| Base rate | 46.2% of events had a positive abnormal return |
-| Brier skill | -0.0367 against forecasting the base rate |
+| Scored observations | 592 issuer-days |
+| Fitting period | 2026-03-02 to 2026-06-02 |
+| Scoring period | 2026-06-12 to 2026-08-11 |
+| Base rate | 42.9% of events had a positive abnormal return |
+| Brier skill | -0.0003 against forecasting the base rate |
 
 The split is chronological: every scored day falls after every fitted day.
+Withheld from both sides: 2026-06-08. Fitted outcomes were still open on
+those days, so forecasts made then would share market moves with returns
+the model had already been fitted on.
 Discrimination is credited once per issuer per day, because several insiders
 at one company on one day resolve to a single outcome.
 
@@ -48,20 +34,20 @@ at one company on one day resolve to a single outcome.
 
 | Day | Rank correlation |
 |---|---|
-| 2026-06-08 | -0.0669 |
-| 2026-06-12 | -0.0291 |
-| 2026-06-18 | -0.3556 |
-| 2026-07-01 | +0.2678 |
-| 2026-07-08 | -0.1171 |
-| 2026-07-14 | +0.3405 |
-| 2026-07-20 | +0.0236 |
-| 2026-07-24 | -0.0211 |
-| 2026-07-30 | +0.0475 |
-| 2026-08-05 | +0.2108 |
-| 2026-08-11 | +0.0385 |
-| **Mean** | **+0.0308** |
-| Standard error | 0.0581 |
-| t | +0.53 |
+| 2026-06-12 | +0.1088 |
+| 2026-06-18 | -0.1167 |
+| 2026-06-25 | +0.0769 |
+| 2026-07-01 | +0.1125 |
+| 2026-07-08 | +0.0876 |
+| 2026-07-14 | +0.3956 |
+| 2026-07-20 | +0.1500 |
+| 2026-07-24 | +0.2496 |
+| 2026-07-30 | +0.0164 |
+| 2026-08-05 | +0.1707 |
+| 2026-08-11 | +0.0779 |
+| **Mean** | **+0.1209** |
+| Standard error | 0.0391 |
+| t | +3.09 |
 
 ## Calibration
 
@@ -70,12 +56,9 @@ has the realised column tracking the forecast column down the table.
 
 | Forecast band | Mean forecast | Realised | Events | |
 |---|---|---|---|---|
-| 0.2 to 0.3 | 0.273 | 0.831 | 65 | `████████████████████····` |
-| 0.3 to 0.4 | 0.363 | 0.425 | 294 | `██████████··············` |
-| 0.4 to 0.5 | 0.457 | 0.452 | 1,003 | `███████████·············` |
-| 0.5 to 0.6 | 0.529 | 0.454 | 355 | `███████████·············` |
-| 0.6 to 0.7 | 0.633 | 0.500 | 14 | `████████████············` |
-| 0.7 to 0.8 | 0.725 | 0.000 | 1 | `························` |
+| 0.3 to 0.4 | 0.371 | 0.377 | 61 | `█████████···············` |
+| 0.4 to 0.5 | 0.442 | 0.422 | 445 | `██████████··············` |
+| 0.5 to 0.6 | 0.535 | 0.500 | 86 | `████████████············` |
 
 ## Fitted weights
 
@@ -85,14 +68,14 @@ predicts anything on its own.
 
 | Feature | Weight |
 |---|---|
-| `fraction_of_holding` | -0.1962 |
-| `log_value_usd` | +0.1670 |
-| `is_officer` | +0.1507 |
-| `is_ten_percent_owner` | -0.1306 |
-| `is_purchase` | +0.1289 |
-| `insiders_trading_same_issuer` | +0.1058 |
-| `is_director` | +0.0704 |
-| `reports_holding` | +0.0562 |
+| `is_purchase` | +0.1697 |
+| `fraction_of_holding` | -0.1218 |
+| `is_officer` | +0.0934 |
+| `is_director` | +0.0786 |
+| `is_ten_percent_owner` | +0.0508 |
+| `reports_holding` | +0.0446 |
+| `log_value_usd` | +0.0371 |
+| `insiders_trading_same_issuer` | +0.0240 |
 
 ## Reading this honestly
 
