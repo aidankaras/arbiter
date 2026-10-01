@@ -267,3 +267,44 @@ def test_unlabelled_events_on_scored_days_are_counted_and_fitted_ones_are_not():
     evaluation = evaluate_baseline(days, embargo_sessions=0)
 
     assert evaluation.test_events_unlabelled == 3 * len(evaluation.test_days)
+
+
+def test_the_fitted_rate_counts_an_issuer_day_by_the_sign_of_its_mean_return():
+    """The reference must decide "rose" exactly as scoring does.
+
+    Each issuer that rose files a second row with a smaller opposite return. The
+    issuer-day still rose; averaging its rows' signs would count it as half.
+    """
+    days: list[DayOfEvents] = []
+    for day in DAYS:
+        base = _day(day, informative=True)
+        extra = [-value / 5 for value in base.returns if value > 0]
+        positives = [index for index, value in enumerate(base.returns) if value > 0]
+        days.append(
+            DayOfEvents(
+                day=day,
+                features=base.features + [base.features[index] for index in positives],
+                outcomes=base.outcomes + [int(value > 0) for value in extra],
+                returns=base.returns + extra,
+                issuers=base.issuers + [base.issuers[index] for index in positives],
+            )
+        )
+
+    evaluation = evaluate_baseline(days, embargo_sessions=0)
+
+    fitted = [day for day in days if day.day in evaluation.train_days]
+    rose = sum(sum(1 for value in day.returns[:40] if value > 0) for day in fitted)
+    assert evaluation.fitted_base_rate == pytest.approx(rose / (40 * len(fitted)))
+
+
+def test_a_scored_day_on_which_nothing_resolved_still_reports_its_unlabelled_events():
+    """The day most fully lost to exclusions is the one the count exists for."""
+    empty = DayOfEvents(
+        day=date(2026, 6, 19), features=[], outcomes=[], returns=[], issuers=[], unlabelled=5
+    )
+    before = replace(empty, day=date(2026, 5, 29), unlabelled=7)
+    days = [before, *(_day(day, informative=True) for day in DAYS), empty]
+
+    evaluation = evaluate_baseline(days, embargo_sessions=0)
+
+    assert evaluation.test_events_unlabelled == 5

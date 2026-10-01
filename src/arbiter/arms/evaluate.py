@@ -144,8 +144,8 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
         msg = (
             f"{day}: {len(stray)} labels name no stored event and {len(unaccounted)} "
             f"events have neither a label nor a recorded exclusion "
-            f"(first: {(stray + unaccounted)[0]}); relabel the day once its "
-            "outcome windows have closed"
+            f"(first: {(stray + unaccounted)[0]}); once its outcome windows have "
+            f"closed, relabel it with `arbiter resolve {day} {domain}`"
         )
         raise LabelCoverageError(msg)
 
@@ -168,6 +168,19 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
         issuers=[int(events[index]["cik"]) for index in kept],
         unlabelled=unlabelled,
     )
+
+
+def _issuer_day_outcomes(days: Sequence[DayOfEvents]) -> list[int]:
+    """Return whether each issuer-day rose, decided as scoring decides it.
+
+    The sign of the issuer's mean return that day, not an average of its rows'
+    signs: two filings returning +0.05 and -0.01 are one issuer-day that rose.
+    """
+    outcomes: list[int] = []
+    for day in days:
+        _, returns = _by_issuer(day.returns, day)
+        outcomes.extend(int(realised > 0) for realised in returns)
+    return outcomes
 
 
 def _by_issuer(forecasts: Sequence[float], day: DayOfEvents) -> tuple[list[float], list[float]]:
@@ -247,6 +260,9 @@ def evaluate_baseline(
             events on either side of the split.
     """
     populated = [day for day in days if len(day) > 0]
+    # Ranked or not, a scored day's events that resolved to nothing are counted;
+    # a day on which none resolved is never split, so it is counted here.
+    unresolved_days = [day for day in days if len(day) == 0]
     train_days, test_days = split_days(
         [day.day for day in populated], train_fraction, embargo_sessions=embargo_sessions
     )
@@ -265,12 +281,14 @@ def evaluate_baseline(
     # population from the one it is judged on.
     train_weights = [weight for day in train for weight in _issuer_day_weights(day)]
     model: FittedBaseline = fit_baseline(train_features, train_outcomes, train_weights)
+    fitted_outcomes = _issuer_day_outcomes(train)
+    fitted_base_rate = sum(fitted_outcomes) / len(fitted_outcomes)
 
     daily: dict[date, float] = {}
     pooled_probabilities: list[float] = []
     pooled_outcomes: list[int] = []
     issuer_days = 0
-    unlabelled = 0
+    unlabelled = sum(day.unlabelled for day in unresolved_days if day.day >= test_days[0])
     # Kept apart from the pooled counts, which are now issuer-level: the report
     # states both, and conflating them would understate the data behind a run.
     scored_events = 0
@@ -304,10 +322,10 @@ def evaluate_baseline(
         daily_ic=daily,
         calibration=calibration_curve(pooled_probabilities, pooled_outcomes),
         brier_skill=brier_skill_score(
-            pooled_probabilities, pooled_outcomes, reference_rate=model.base_rate
+            pooled_probabilities, pooled_outcomes, reference_rate=fitted_base_rate
         ),
         brier_skill_scored_rate=brier_skill_score(pooled_probabilities, pooled_outcomes),
-        fitted_base_rate=model.base_rate,
+        fitted_base_rate=fitted_base_rate,
         base_rate=sum(pooled_outcomes) / len(pooled_outcomes),
         train_days=train_days,
         test_days=test_days,

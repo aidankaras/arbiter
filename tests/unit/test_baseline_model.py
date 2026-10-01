@@ -89,21 +89,6 @@ def test_every_feature_is_weighted_so_none_is_silently_dropped():
     assert set(weights) == set(FEATURE_NAMES)
 
 
-def test_the_fitted_base_rate_is_weighted_the_way_the_fit_is():
-    """The reference rate must count observations in the unit that is scored.
-
-    Three rows of one positive issuer-day against one negative row: unweighted
-    the rate is 0.75, but weighted to one per issuer-day it is a half.
-    """
-    features, _ = _separable(count=4)
-    outcomes = [1, 1, 1, 0]
-
-    model = fit_baseline(features, outcomes, weights=[1 / 3, 1 / 3, 1 / 3, 1.0])
-
-    assert model.base_rate == pytest.approx(0.5)
-    assert fit_baseline(features, outcomes).base_rate == pytest.approx(0.75)
-
-
 def test_fitting_twice_on_the_same_data_gives_the_same_model():
     """A published number has to be reproducible from the recorded seed."""
     features, outcomes = _separable()

@@ -61,16 +61,9 @@ class DegenerateTrainingSetError(ValueError):
 
 @dataclass(frozen=True)
 class FittedBaseline:
-    """A fitted model, with the outcome rate it was fitted on.
-
-    `base_rate` is weighted the way the fit is, so with issuer-day weights it is
-    the share of fitted issuer-days that rose. It is the constant a forecaster
-    could have quoted before any scored outcome was known, which makes it the
-    feasible reference for the scored period's Brier skill.
-    """
+    """A fitted model, ready to forecast."""
 
     pipeline: Pipeline
-    base_rate: float
 
     def coefficients(self) -> dict[str, float]:
         """Return each feature's fitted weight, on the standardised scale.
@@ -134,10 +127,7 @@ def fit_baseline(
         model__sample_weight=sample_weight,
     )
 
-    return FittedBaseline(
-        pipeline=pipeline,
-        base_rate=float(np.average(outcomes, weights=sample_weight)),
-    )
+    return FittedBaseline(pipeline=pipeline)
 
 
 def forecast(model: FittedBaseline, features: Sequence[Mapping[str, float]]) -> list[float]:
