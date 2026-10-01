@@ -175,6 +175,18 @@ def test_a_forecast_worse_than_the_base_rate_is_said_so_in_the_verdict():
     assert "-0.2224" in verdict
 
 
+@pytest.mark.parametrize("skill", [-0.0003, 0.0003])
+def test_a_brier_skill_near_zero_is_not_given_a_direction(skill: float):
+    """A sign on a value this small would read as a finding it is not."""
+    near = replace(_evaluation(0.004, 0.011, 0.36), brier_skill=skill)
+
+    verdict = render_baseline_report(near, GENERATED).split("## What this rests on")[0]
+
+    assert "indistinguishable from it" in verdict
+    assert "less useful" not in verdict
+    assert "worth slightly more" not in verdict
+
+
 def test_a_positive_brier_skill_is_still_qualified_in_the_verdict():
     better = replace(_evaluation(0.004, 0.011, 0.36), brier_skill=0.0130)
 
@@ -224,7 +236,7 @@ def test_exactly_zero_skill_is_not_called_better_than_the_base_rate():
 
     verdict = render_baseline_report(neutral, GENERATED).split("## What this rests on")[0]
 
-    assert "worth exactly what forecasting the base rate" in verdict
+    assert "indistinguishable from it" in verdict
     assert "worth slightly more" not in verdict
 
 

@@ -1,8 +1,9 @@
 """A feature must not depend on which events turned out to be measurable.
 
-One feature counts the insiders trading the same issuer on the same day. It is
-computed over the day's filings, and the day's filings are all visible at the
-moment a forecast is made. Which of them eventually resolves to a label is not:
+One feature counts the insiders trading the same issuer on the same day. For
+each event it is computed over the filings accepted by that event's own
+acceptance, all of which are visible when its forecast is made. Which of them
+eventually resolves to a label is not:
 that depends on whether the issuer could be priced over the following week,
 which is information from after the filing.
 

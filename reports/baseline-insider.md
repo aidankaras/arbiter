@@ -8,7 +8,7 @@ Generated 2026-10-01 from the event store.
 
 ## Result
 
-**A positive information coefficient of +0.1209** (standard error 0.0391, t = +3.09) across 11 days. This clears the conventional two-standard-error threshold, which is a weak bar: it is one test on one sample, and the estimate should be expected to shrink as more days are added. Calibration is worse than that: a Brier skill of -0.0003 means the stated probabilities were less useful than forecasting the base rate of 42.9% for every event. The forecasts run high by 0.019 across the reliability bands below, weighted by the events in each, on balance, with 1 of 3 bands running the other way.
+**A positive information coefficient of +0.1209** (standard error 0.0391, t = +3.09) across 11 days. This clears the conventional two-standard-error threshold, which is a weak bar: it is one test on one sample, and the estimate should be expected to shrink as more days are added. The stated probabilities are worth no more than forecasting the base rate of 42.9% for every event: a Brier skill of -0.0003 is indistinguishable from it. The forecasts run high by 0.019 across the reliability bands below, weighted by the events in each, on balance, with 1 of 3 bands running the other way.
 
 ## What this rests on
 

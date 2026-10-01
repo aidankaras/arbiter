@@ -24,10 +24,11 @@ file alone.
 Both causes are fixed and pinned by contract tests over recorded filings. The
 report is kept rather than deleted so that what was claimed at its commit stays
 inspectable, which is the same reason results are committed at all. Before
-its replacement was computed, a review of the evaluation found three further
+its replacement was computed, a review of the evaluation found four further
 defects, each fixed and tested first: a clustering feature that counted filings
-accepted later the same day, a holding fraction miscomputed for purchases, and
-no embargo between fitted and scored outcome windows.
+accepted later the same day, a holding fraction miscomputed for purchases, no
+embargo between fitted and scored outcome windows, and a fit that counted
+transaction rows while scoring counted issuer-days.
 
 `redflag-population.md` — why the red-flag domain has no baseline arm yet. The
 screened population is 94% officer transitions, while the restatements and
