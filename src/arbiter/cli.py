@@ -17,6 +17,7 @@ from pydantic import ValidationError
 from arbiter import __version__
 from arbiter.arms.evaluate import (
     TRAIN_FRACTION,
+    LabelCoverageError,
     evaluate_baseline,
     load_days,
     stored_days,
@@ -192,6 +193,12 @@ def report(
     was claimed at a given commit stays inspectable; recomputing against more
     data produces a new report rather than an edit to the old one.
     """
+    if not 0 < train_fraction < 1:
+        typer.echo(
+            f"--train-fraction must be strictly between 0 and 1, not {train_fraction}", err=True
+        )
+        raise typer.Exit(code=2)
+
     store = Path(root)
     days = stored_days(store, domain)
     if not days:
@@ -210,6 +217,9 @@ def report(
     except UnsupportedDomainError as exc:
         typer.echo(f"the baseline arm cannot score '{domain}': {exc}", err=True)
         raise typer.Exit(code=2) from None
+    except LabelCoverageError as exc:
+        typer.echo(f"refusing to score a day whose labels are stale: {exc}", err=True)
+        raise typer.Exit(code=1) from None
 
     destination = Path(out) / f"baseline-{domain}.md"
     destination.parent.mkdir(parents=True, exist_ok=True)

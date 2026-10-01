@@ -14,9 +14,15 @@ from math import log, sqrt
 from statistics import stdev
 
 import pytest
+from pydantic import ValidationError
 
 from arbiter.ingestion.market import Bar
-from arbiter.packets.build import build_packet, market_summary, to_session_bar
+from arbiter.packets.build import (
+    UnusablePriceError,
+    build_packet,
+    market_summary,
+    to_session_bar,
+)
 from arbiter.packets.schema import SessionBar
 
 ACCEPTED = datetime(2026, 7, 13, 20, 47, tzinfo=UTC)
@@ -184,10 +190,37 @@ def test_the_heaviest_session_ranks_at_the_top_of_its_window():
 
 
 def test_the_lightest_session_ranks_at_the_bottom_of_its_window():
-    """One sixty-third, not zero: the session ranks at or below itself."""
+    """Zero: the session is not part of its own comparison set."""
     bars = [_session(volume="100") for _ in range(62)] + [_session(volume="1")]
 
-    assert market_summary(bars).volume_percentile_63d == Decimal(1) / Decimal(63)
+    assert market_summary(bars).volume_percentile_63d == Decimal(0)
+
+
+def test_a_session_at_its_usual_volume_ranks_at_the_median():
+    """An illiquid issuer trading its usual 100 shares is not a heavy session.
+
+    Counting ties as at-or-below ranked this the heaviest of its window.
+    """
+    bars = [_session(volume="100") for _ in range(63)]
+
+    assert market_summary(bars).volume_percentile_63d == Decimal("0.5")
+
+
+def test_ties_count_half_and_sessions_below_count_fully():
+    """Half the earlier sessions lighter and half tied: three quarters."""
+    bars = [_session(volume="50") for _ in range(31)] + [
+        _session(volume="100") for _ in range(32)
+    ]
+
+    assert market_summary(bars).volume_percentile_63d == Decimal("0.75")
+
+
+def test_only_the_trailing_window_is_ranked_against():
+    """Sessions older than the window must not move the rank."""
+    old_heavy = [_session(volume="999") for _ in range(40)]
+    window = [_session(volume="50") for _ in range(62)] + [_session(volume="100")]
+
+    assert market_summary(old_heavy + window).volume_percentile_63d == Decimal(1)
 
 
 def test_volatility_matches_the_sample_standard_deviation_of_its_log_returns():
@@ -236,12 +269,33 @@ def test_volatility_matches_the_sample_standard_deviation_of_its_log_returns():
     assert float(measured) == pytest.approx(expected, rel=1e-9)
 
 
-def test_a_non_positive_close_reports_no_return_rather_than_a_meaningless_one():
-    """A zero close is not a price; dividing by it would invent a figure."""
-    bars = [_session(close="0")] + [_session(close="50") for _ in range(21)]
+@pytest.mark.parametrize("close", ["0", "-1"])
+def test_a_close_that_is_not_a_price_is_refused_rather_than_summarised(close: str):
+    """Bad data must not read as thin data.
 
-    assert market_summary(bars).trailing_return_21d is None
-    assert market_summary(bars).realised_volatility_21d is None
+    The zero sits mid-window, where the trailing return never reads it: guarding
+    only the window's first close once reported a computed return of zero
+    beside an absent volatility for the same series.
+    """
+    bars = [_session(close="50") for _ in range(10)]
+    bars += [_session(close=close)] + [_session(close="50") for _ in range(11)]
+
+    with pytest.raises(UnusablePriceError, match="is not a price"):
+        market_summary(bars)
+
+
+@pytest.mark.parametrize("close", ["NaN", "Infinity"])
+def test_a_non_finite_close_is_refused_before_it_can_be_summarised(close: str):
+    """The summary does not check finiteness because the bar type already does."""
+    with pytest.raises(ValidationError, match="finite"):
+        _session(close=close)
+
+
+def test_the_same_series_with_every_close_a_price_is_summarised():
+    """The premise of the refusal above: only the bad close differs."""
+    bars = [_session(close="50") for _ in range(22)]
+
+    assert market_summary(bars).trailing_return_21d == Decimal(0)
 
 
 def test_the_packet_built_from_a_row_hashes_stably():

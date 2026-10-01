@@ -164,6 +164,22 @@ def write_unpriceable(
     return path
 
 
+def read_unpriceable(
+    root: Path, domain: str, day: date, stage: str
+) -> list[dict[str, str]] | None:
+    """Return the exclusions one stage recorded for a day, or `None` if it recorded none.
+
+    `None` and an empty list differ for the reason `write_unpriceable` writes
+    empty records: a stage that ran and excluded nothing is not a stage that
+    never ran.
+    """
+    path = root / "unpriceable" / stage / domain / f"{day.isoformat()}.json"
+    if not path.exists():
+        return None
+    records: list[dict[str, str]] = json.loads(path.read_text(encoding="utf-8"))
+    return records
+
+
 def partition_exists(root: Path, domain: str, day: date) -> bool:
     """Report whether a day has been processed for a domain.
 

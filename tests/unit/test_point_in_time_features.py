@@ -20,7 +20,7 @@ from arbiter.arms.evaluate import load_day
 from arbiter.arms.features import FEATURE_NAMES
 from arbiter.evaluation.resolution import Label
 from arbiter.events.insider import InsiderEvent
-from arbiter.ingestion.store import write_events
+from arbiter.ingestion.store import write_events, write_unpriceable
 
 DAY = date(2026, 8, 3)
 
@@ -55,6 +55,13 @@ def _label(accession: str) -> Label:
     )
 
 
+def _unpriced(*accessions: str) -> list[dict[str, str]]:
+    return [
+        {"accession_no": accession, "reason": "issuer has no listed ticker"}
+        for accession in accessions
+    ]
+
+
 def test_clustering_counts_the_days_filings_not_the_ones_that_resolved(tmp_path: Path):
     """Three insiders filed; only one event could be priced.
 
@@ -72,11 +79,13 @@ def test_clustering_counts_the_days_filings_not_the_ones_that_resolved(tmp_path:
         DAY,
     )
     write_events([_label("a-1")], tmp_path, "labels-insider", DAY)
+    write_unpriceable(_unpriced("a-2", "a-3"), tmp_path, "insider", DAY, stage="labeling")
 
     loaded = load_day(tmp_path, "insider", DAY)
 
     assert loaded is not None
     assert len(loaded) == 1, "only the priceable event is scored"
+    assert loaded.unlabelled == 2
     assert loaded.features[0]["insiders_trading_same_issuer"] == 3.0, (
         "the count must reflect the day as it looked when the forecast was made"
     )
@@ -85,11 +94,13 @@ def test_clustering_counts_the_days_filings_not_the_ones_that_resolved(tmp_path:
 def test_an_unlabelled_day_is_distinguishable_from_an_unprocessed_one(tmp_path: Path):
     write_events([_event("a-1", "Gifford Kathryn")], tmp_path, "insider", DAY)
     write_events([], tmp_path, "labels-insider", DAY)
+    write_unpriceable(_unpriced("a-1"), tmp_path, "insider", DAY, stage="labeling")
 
     loaded = load_day(tmp_path, "insider", DAY)
 
     assert loaded is not None, "the day was processed; it simply resolved nothing"
     assert len(loaded) == 0
+    assert loaded.unlabelled == 1
 
 
 def test_a_day_never_processed_reads_as_absent(tmp_path: Path):

@@ -30,3 +30,23 @@ def test_the_refusal_names_the_domains_that_do_exist():
 
     for domain in HORIZONS:
         assert domain in result.output
+
+
+def test_a_training_fraction_outside_the_unit_interval_is_refused_before_reading(
+    tmp_path: Path,
+):
+    """The same empty store is reported as empty when the fraction is valid.
+
+    That pairing shows the refusal comes from the fraction, not from the store.
+    """
+    refused = runner.invoke(
+        app, ["report", "--root", str(tmp_path), "--train-fraction", "-0.2"]
+    )
+    accepted = runner.invoke(
+        app, ["report", "--root", str(tmp_path), "--train-fraction", "0.6"]
+    )
+
+    assert refused.exit_code == 2
+    assert "strictly between 0 and 1" in refused.output
+    assert accepted.exit_code == 1
+    assert "no labelled" in accepted.output

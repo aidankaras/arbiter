@@ -57,22 +57,39 @@ def _calibration_verdict(evaluation: Evaluation) -> str:
     skill = evaluation.brier_skill
     if math.isnan(skill):
         return ""
+    fitted = f"the fitting period's rate of {evaluation.fitted_base_rate:.1%}"
     if abs(skill) < _NEGLIGIBLE_SKILL:
         return (
-            f" The stated probabilities are worth no more than forecasting the base "
-            f"rate of {evaluation.base_rate:.1%} for every event: a Brier skill of "
-            f"{skill:+.4f} is indistinguishable from it." + _bias_direction(evaluation)
+            f" The stated probabilities are worth no more than forecasting {fitted} "
+            f"for every issuer-day: a Brier skill of {skill:+.4f} is indistinguishable "
+            "from it." + _hindsight_skill(evaluation) + _bias_direction(evaluation)
         )
     if skill > 0:
         return (
-            f" The stated probabilities are worth slightly more than the base rate "
-            f"(Brier skill {skill:+.4f}), which is a weaker claim than discrimination "
-            "and should be read as one."
+            f" The stated probabilities are worth slightly more than forecasting "
+            f"{fitted} (Brier skill {skill:+.4f}), which is a weaker claim than "
+            "discrimination and should be read as one." + _hindsight_skill(evaluation)
         )
     return (
         f" Calibration is worse than that: a Brier skill of {skill:+.4f} means "
-        f"the stated probabilities were less useful than forecasting the base "
-        f"rate of {evaluation.base_rate:.1%} for every event." + _bias_direction(evaluation)
+        f"the stated probabilities were less useful than forecasting {fitted} "
+        "for every issuer-day." + _hindsight_skill(evaluation) + _bias_direction(evaluation)
+    )
+
+
+def _hindsight_skill(evaluation: Evaluation) -> str:
+    """State the skill against the scored period's own rate, named as hindsight.
+
+    The fitted period's rate is the comparison a forecaster could have made;
+    the scored period's rate is stricter because it was not knowable when the
+    forecasts were made. Both are stated so neither reading is left to infer.
+    """
+    skill = evaluation.brier_skill_scored_rate
+    if math.isnan(skill):
+        return ""
+    return (
+        f" Against the scored period's own rate of {evaluation.base_rate:.1%}, which "
+        f"was not knowable in advance, the Brier skill is {skill:+.4f}."
     )
 
 
@@ -93,9 +110,9 @@ def _bias_direction(evaluation: Evaluation) -> str:
     if not counted:
         return ""
 
-    events = sum(band.count for band in counted)
+    pooled = sum(band.count for band in counted)
     residuals = [(band.forecast - band.realised, band.count) for band in counted]
-    weighted = sum(residual * count for residual, count in residuals) / events
+    weighted = sum(residual * count for residual, count in residuals) / pooled
 
     high = sum(1 for residual, _ in residuals if residual > 0)
     low = sum(1 for residual, _ in residuals if residual < 0)
@@ -113,7 +130,7 @@ def _bias_direction(evaluation: Evaluation) -> str:
         )
         return (
             f" The forecasts run {direction} by {abs(weighted):.3f} across the "
-            f"reliability bands below, weighted by the events in each, {consistency}."
+            f"reliability bands below, weighted by the issuer-days in each, {consistency}."
         )
 
     if agree:
@@ -165,6 +182,16 @@ def _verdict(evaluation: Evaluation) -> str:
     )
 
 
+def _unlabelled(evaluation: Evaluation) -> str:
+    """Say how many scored-day events had no outcome, when any did."""
+    if not evaluation.test_events_unlabelled:
+        return ""
+    return (
+        f"; {evaluation.test_events_unlabelled:,} more could not be priced and are "
+        "recorded as exclusions"
+    )
+
+
 def _embargo_lines(embargoed: Sequence[date]) -> list[str]:
     """Name the days withheld because fitted outcomes were still open on them."""
     if not embargoed:
@@ -204,7 +231,8 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         "|---|---|",
         f"| Fitted on | {len(evaluation.train_days)} days, "
         f"{evaluation.train_events:,} events |",
-        f"| Scored on | {len(evaluation.test_days)} days, {evaluation.test_events:,} events |",
+        f"| Scored on | {len(evaluation.test_days)} days, "
+        f"{evaluation.test_events:,} labelled events{_unlabelled(evaluation)} |",
         # These two counts differ whenever a day carried too few distinct
         # issuers to rank. Reporting only one of them would leave the day count
         # in the verdict contradicting the day count in this table.
@@ -212,9 +240,13 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         f"| Scored observations | {evaluation.test_issuer_days:,} issuer-days |",
         f"| Fitting period | {evaluation.train_days[0]} to {evaluation.train_days[-1]} |",
         f"| Scoring period | {evaluation.test_days[0]} to {evaluation.test_days[-1]} |",
-        f"| Base rate | {evaluation.base_rate:.1%} of events had a positive abnormal return |",
+        f"| Up-rate, fitting period | {evaluation.fitted_base_rate:.1%} of issuer-days "
+        "had a positive abnormal return |",
+        f"| Up-rate, scoring period | {evaluation.base_rate:.1%} of issuer-days |",
         f"| Brier skill | {_signed(evaluation.brier_skill)} against forecasting "
-        "the base rate |",
+        "the fitting period's rate |",
+        f"| Brier skill, hindsight reference | {_signed(evaluation.brier_skill_scored_rate)} "
+        "against forecasting the scoring period's own rate, not knowable in advance |",
         "",
         "The split is chronological: every scored day falls after every fitted day.",
         *_embargo_lines(evaluation.embargoed_days),
@@ -239,8 +271,10 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         "",
         "Whether a stated probability means what it says. A well-calibrated forecast",
         "has the realised column tracking the forecast column down the table.",
+        f"Pooled over all {evaluation.pooled_issuer_days:,} scored issuer-days, including",
+        "any on days with too few issuers to rank.",
         "",
-        "| Forecast band | Mean forecast | Realised | Events | |",
+        "| Forecast band | Mean forecast | Realised | Issuer-days | |",
         "|---|---|---|---|---|",
     ]
 

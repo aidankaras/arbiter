@@ -193,3 +193,16 @@ def test_a_curve_needs_at_least_two_bands():
 def test_an_empty_evaluation_is_refused_rather_than_scored():
     with pytest.raises(InsufficientObservationsError):
         calibration_curve([], [], bins=10)
+
+
+def test_a_constant_reference_rate_is_scored_against_that_rate_not_the_realised_one():
+    """Quoting the training rate is the feasible constant, and it scores zero against itself.
+
+    Against the realised rate the same constant scores below zero, because the
+    realised rate is the best constant in hindsight and no other can match it.
+    """
+    outcomes = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
+    stale = [0.5] * len(outcomes)
+
+    assert brier_skill_score(stale, outcomes, reference_rate=0.5) == pytest.approx(0.0)
+    assert brier_skill_score(stale, outcomes) < 0

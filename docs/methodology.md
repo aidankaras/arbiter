@@ -240,9 +240,18 @@ arms and portfolios that produce them.
   least ten issuers. Its standard error treats days as independent. Sampled
   days are four sessions apart while outcomes run five, so adjacent days' windows
   overlap by a session and the stated error is somewhat optimistic.
-- **Brier skill** is measured against forecasting the scored period's own base
-  rate for every issuer-day. That rate was not knowable in advance, which makes
-  it a harder reference than any constant the model could have used.
+- **Brier skill** is reported against two constant forecasts. The headline
+  reference is the fitting period's up-rate, weighted by issuer-day: the
+  constant a forecaster could have quoted before any scored outcome was known.
+  The second is the scored period's own up-rate, which was not knowable in
+  advance and is the best constant in hindsight, so skill against it is always
+  the lower of the two. Calibration and both skills are pooled over every
+  scored issuer-day, including days too thin to rank.
+- **Label coverage.** A scored day's events without an outcome are dropped and
+  counted, and each must carry an exclusion recorded by the labeling pass. A
+  day with an unlabelled event and no record, or a label for an event the day
+  no longer holds, is refused rather than scored: it means the labels were
+  written before an outcome window closed or survived a re-ingestion.
 
 ## Backtest contamination
 

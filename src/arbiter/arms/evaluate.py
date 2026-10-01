@@ -46,6 +46,9 @@ class DayOfEvents:
     outcomes: list[int]
     returns: list[float]
     issuers: list[int]
+    #: Events filed that day that resolved to no outcome, every one of them
+    #: recorded as an exclusion by the labeling pass.
+    unlabelled: int = 0
 
     def __len__(self) -> int:
         return len(self.features)
@@ -58,15 +61,42 @@ class Evaluation:
     ic: ICSummary
     daily_ic: dict[date, float]
     calibration: list[CalibrationBin]
+    #: Against forecasting the fitted period's rate: the constant a forecaster
+    #: could have quoted before any scored outcome was known.
     brier_skill: float
+    #: Against forecasting the scored period's own rate, which was not knowable
+    #: in advance — a stricter reference than any feasible constant.
+    brier_skill_scored_rate: float
+    #: Share of fitted issuer-days that rose.
+    fitted_base_rate: float
+    #: Share of scored issuer-days that rose.
     base_rate: float
     train_days: list[date]
     test_days: list[date]
     embargoed_days: list[date]
     train_events: int
     test_events: int
+    #: Events on scored days dropped for want of an outcome, each recorded as
+    #: an exclusion. Reported so the labelled share of the sample is visible.
+    test_events_unlabelled: int
+    #: Issuer-days on days that contributed a rank correlation: the sample the
+    #: information coefficient rests on.
     test_issuer_days: int
+    #: Every scored issuer-day, which calibration, Brier skill and the base
+    #: rate are pooled over. Larger than `test_issuer_days` whenever a scored
+    #: day had too few issuers to rank.
+    pooled_issuer_days: int
     coefficients: dict[str, float]
+
+
+class LabelCoverageError(ValueError):
+    """Raised when a day's labels and events disagree beyond what was recorded.
+
+    An unlabelled event is legitimate only when the labeling pass recorded why.
+    One it did not record means the label partition predates the events it
+    should describe — written before an outcome window closed, or left behind
+    by a re-ingestion — and scoring the day would silently score a subset.
+    """
 
 
 def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
@@ -74,12 +104,17 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
 
     Events without a label are dropped rather than assigned a neutral outcome:
     they were not measurable, and inventing a zero return for them would put
-    fabricated observations into the evaluation.
+    fabricated observations into the evaluation. How many were dropped is kept,
+    and each must have been recorded as an exclusion when the day was labelled.
 
     Returns `None` for a day that was never processed, so a caller can tell a
     missing day from a day that produced nothing.
+
+    Raises:
+        LabelCoverageError: a label names an event the day does not hold, or
+            an event has neither a label nor a recorded exclusion.
     """
-    from arbiter.ingestion.store import partition_exists, read_events
+    from arbiter.ingestion.store import partition_exists, read_events, read_unpriceable
 
     if not partition_exists(root, domain, day) or not partition_exists(
         root, f"labels-{domain}", day
@@ -98,12 +133,31 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
     # the same issuer by each event's acceptance, and computing it over the
     # labelled subset would make it depend on which events turned out to be
     # priceable — a fact from after the filing.
+    accessions = {str(event["accession_no"]) for event in events}
+    stray = sorted(set(outcomes) - accessions)
+    excluded = {
+        str(record["accession_no"])
+        for record in read_unpriceable(root, domain, day, stage="labeling") or []
+    }
+    unaccounted = sorted(accessions - set(outcomes) - excluded)
+    if stray or unaccounted:
+        msg = (
+            f"{day}: {len(stray)} labels name no stored event and {len(unaccounted)} "
+            f"events have neither a label nor a recorded exclusion "
+            f"(first: {(stray + unaccounted)[0]}); relabel the day once its "
+            "outcome windows have closed"
+        )
+        raise LabelCoverageError(msg)
+
     features = day_features(events)
     kept = [
         index for index, event in enumerate(events) if str(event["accession_no"]) in outcomes
     ]
+    unlabelled = len(events) - len(kept)
     if not kept:
-        return DayOfEvents(day=day, features=[], outcomes=[], returns=[], issuers=[])
+        return DayOfEvents(
+            day=day, features=[], outcomes=[], returns=[], issuers=[], unlabelled=unlabelled
+        )
 
     returns = [outcomes[str(events[index]["accession_no"])] for index in kept]
     return DayOfEvents(
@@ -112,6 +166,7 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
         outcomes=[int(value > 0) for value in returns],
         returns=returns,
         issuers=[int(events[index]["cik"]) for index in kept],
+        unlabelled=unlabelled,
     )
 
 
@@ -154,10 +209,15 @@ def split_days(
     five-session horizon entered at the next open, that is six.
 
     Raises:
+        ValueError: `train_fraction` is not strictly between 0 and 1. A
+            negative one would slice from the end and fit on most of the days.
         InsufficientObservationsError: the split would leave fewer than one
             training day or fewer than two test days, the latter being the
             minimum from which a spread across days can be estimated.
     """
+    if not 0 < train_fraction < 1:
+        msg = f"train_fraction must be strictly between 0 and 1, not {train_fraction}"
+        raise ValueError(msg)
     ordered = sorted(days)
     cut = int(len(ordered) * train_fraction)
     train, test = ordered[:cut], ordered[cut:]
@@ -210,6 +270,7 @@ def evaluate_baseline(
     pooled_probabilities: list[float] = []
     pooled_outcomes: list[int] = []
     issuer_days = 0
+    unlabelled = 0
     # Kept apart from the pooled counts, which are now issuer-level: the report
     # states both, and conflating them would understate the data behind a run.
     scored_events = 0
@@ -218,6 +279,7 @@ def evaluate_baseline(
         probabilities = forecast(model, day.features)
         issuer_forecasts, issuer_returns = _by_issuer(probabilities, day)
         scored_events += len(day)
+        unlabelled += day.unlabelled
 
         # Calibration, Brier skill and the base rate are pooled at the issuer-day
         # level, the same unit the information coefficient is credited at. Pooled
@@ -241,14 +303,20 @@ def evaluate_baseline(
         ic=summarise_ic(daily, observations=issuer_days),
         daily_ic=daily,
         calibration=calibration_curve(pooled_probabilities, pooled_outcomes),
-        brier_skill=brier_skill_score(pooled_probabilities, pooled_outcomes),
+        brier_skill=brier_skill_score(
+            pooled_probabilities, pooled_outcomes, reference_rate=model.base_rate
+        ),
+        brier_skill_scored_rate=brier_skill_score(pooled_probabilities, pooled_outcomes),
+        fitted_base_rate=model.base_rate,
         base_rate=sum(pooled_outcomes) / len(pooled_outcomes),
         train_days=train_days,
         test_days=test_days,
         embargoed_days=embargoed_days,
         train_events=len(train_features),
         test_events=scored_events,
+        test_events_unlabelled=unlabelled,
         test_issuer_days=issuer_days,
+        pooled_issuer_days=len(pooled_outcomes),
         coefficients=model.coefficients(),
     )
 
