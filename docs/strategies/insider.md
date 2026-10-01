@@ -10,15 +10,21 @@ strategy is almost entirely a parsing and feature-engineering problem.
 
 ## Features
 
-| Feature | Notes |
+The baseline arm uses these features, defined in `src/arbiter/arms/features.py`:
+
+| Feature | Definition |
 |---|---|
-| Filer role | Officer, director, or ten-percent owner |
-| Transaction code | Open-market purchase and sale are informative; option exercises and gifts largely are not |
-| Size relative to existing holdings | A purchase doubling a position differs from one adding a percent |
-| Size relative to the filer's own history | Normalizes across individuals |
-| Cluster flag | Multiple insiders transacting within a rolling window |
-| Days to the next scheduled earnings event | Timing relative to known information releases |
-| Rule 10b5-1 plan indicator | Pre-scheduled trades carry little information |
+| `is_purchase` | Open-market purchase (code P) rather than sale (code S) |
+| `log_value_usd` | Log of the transaction's dollar value |
+| `fraction_of_holding` | Shares traded as a fraction of the stake held before the trade |
+| `reports_holding` | Whether the filing reported a remaining holding, so a missing value is distinguishable from zero |
+| `is_officer`, `is_director`, `is_ten_percent_owner` | Filer role, as independent flags because one insider often holds several |
+| `insiders_trading_same_issuer` | Distinct insiders filing for the same issuer on the same day |
+
+Rule 10b5-1 status is a screening criterion rather than a feature: scheduled
+trades are excluded before scoring, so the column would be constant. Size
+relative to the filer's own history and timing relative to the next earnings
+date are planned; neither is computed yet.
 
 **The plan indicator is read at filing level, not per transaction.** The parsed
 filing exposes one flag, so a Form 4 reporting both a scheduled sale and a

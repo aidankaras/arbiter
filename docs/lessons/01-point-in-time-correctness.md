@@ -1,8 +1,8 @@
 # 01 — Point-in-time correctness
 
 **Subsystems:** `packets`, `retrieval`
-**Status:** design settled; the ingestion half is implemented, the packet and
-retrieval half is not. Sections below say which is which, and nothing here
+**Status:** design settled; ingestion and packet construction are implemented,
+comparable retrieval is not. Sections below say which is which, and nothing here
 should be read as describing code that exists unless it says so.
 
 ## The concept
@@ -81,10 +81,10 @@ if the forward sample stays small for longer than expected.
 ## How it is implemented
 
 The `as_of` timestamp is a required field on the packet, not an optional
-parameter with a default. Retrieval functions take it as a positional argument,
+parameter with a default. Retrieval, when built, takes it as a positional argument,
 so omitting it is a type error rather than a silently permissive query.
 
-Every retrieval path carries a test that inserts a comparable resolving after the
+Every retrieval path will carry a test that inserts a comparable resolving after the
 event timestamp and asserts it is excluded. These tests are treated as
 correctness tests for the project's central claim, not as coverage.
 
