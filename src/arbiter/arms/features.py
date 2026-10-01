@@ -25,8 +25,8 @@ model given a zero would read it as an insider who has sold out entirely.
 from __future__ import annotations
 
 import math
-from collections import Counter
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -76,22 +76,33 @@ def _role_flags(position: str) -> tuple[float, float, float]:
 
 
 def _fraction_of_holding(
-    shares: Decimal | None, remaining: Decimal | None
+    shares: Decimal | None, remaining: Decimal | None, *, purchase: bool
 ) -> tuple[float, float]:
     """Return the traded share of the insider's stake, and whether it is known.
 
-    The denominator is the holding before the transaction, reconstructed as the
-    shares moved plus those remaining. A filing that reports no remaining
-    holding yields a neutral 0.0 paired with a 0.0 indicator, so the model can
-    distinguish "did not say" from "sold everything".
+    The denominator is the holding before the transaction. Form 4 reports the
+    holding after it, so a sale adds the shares back and a purchase subtracts
+    them. A purchase into an empty stake opens a position and reads as 1.0, the
+    mirror of selling out.
+
+    A filing that reports no remaining holding yields a neutral 0.0 paired with
+    a 0.0 indicator, so the model can distinguish "did not say" from "sold
+    everything". So does a purchase whose reported holding is smaller than the
+    shares bought, which describes some other class or account than the one
+    traded and leaves no pre-trade stake to recover.
     """
-    if shares is None or remaining is None:
+    if shares is None or remaining is None or shares <= 0:
         return 0.0, 0.0
 
-    before = float(shares) + float(remaining)
-    if before <= 0:
-        return 0.0, 0.0
+    if not purchase:
+        before = float(shares) + float(remaining)
+        return min(float(shares) / before, 1.0), 1.0
 
+    before = float(remaining) - float(shares)
+    if before < 0:
+        return 0.0, 0.0
+    if before == 0:
+        return 1.0, 1.0
     return min(float(shares) / before, 1.0), 1.0
 
 
@@ -100,8 +111,9 @@ def event_features(row: Mapping[str, Any], insiders_same_issuer: int) -> dict[st
 
     Args:
         row: a stored insider event.
-        insiders_same_issuer: how many distinct insiders filed for this issuer
-            on this day. Clustered filing is the one feature that needs the
+        insiders_same_issuer: how many distinct insiders had filed for this
+            issuer on this day by the time this filing was accepted, itself
+            included. Clustered filing is the one feature that needs the
             day's other events, and it is passed in rather than looked up so
             this stays a pure function of its inputs.
 
@@ -112,7 +124,9 @@ def event_features(row: Mapping[str, Any], insiders_same_issuer: int) -> dict[st
     code = str(row["transaction_code"]).strip().upper()
     value = row["value_usd"]
     officer, director, ten_percent = _role_flags(str(row["position"]))
-    fraction, reports_holding = _fraction_of_holding(row["shares"], row.get("remaining_shares"))
+    fraction, reports_holding = _fraction_of_holding(
+        row["shares"], row.get("remaining_shares"), purchase=code == _PURCHASE
+    )
 
     return {
         "is_purchase": float(code == _PURCHASE),
@@ -147,7 +161,10 @@ def day_features(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, float]]:
     over the day rather than the filing: several insiders at one issuer trading
     on the same day is a stronger signal than any of them alone, and counting
     distinct insiders rather than filings keeps one person's several rows from
-    reading as a crowd.
+    reading as a crowd. Each event counts only the filings accepted at or before
+    its own: its forecast is made at that instant and its evidence packet is
+    frozen there, so a count that saw the rest of the day would give this arm
+    information the other arms are denied.
 
     Raises:
         UnsupportedDomainError: the rows carry no Form 4 fields, as red-flag
@@ -161,12 +178,17 @@ def day_features(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, float]]:
         )
         raise UnsupportedDomainError(msg)
 
-    insiders_by_issuer: dict[int, set[str]] = {}
+    filed_by_issuer: dict[int, list[tuple[datetime, str]]] = {}
     for row in rows:
-        insiders_by_issuer.setdefault(int(row["cik"]), set()).add(str(row["insider_name"]))
+        filed_by_issuer.setdefault(int(row["cik"]), []).append(
+            (row["as_of"], str(row["insider_name"]))
+        )
 
-    counts = Counter({cik: len(names) for cik, names in insiders_by_issuer.items()})
-    return [event_features(row, counts[int(row["cik"])]) for row in rows]
+    def known_at(row: Mapping[str, Any]) -> int:
+        filed = filed_by_issuer[int(row["cik"])]
+        return len({name for accepted, name in filed if accepted <= row["as_of"]})
+
+    return [event_features(row, known_at(row)) for row in rows]
 
 
 def as_matrix(features: Sequence[Mapping[str, float]]) -> list[list[float]]:
