@@ -222,8 +222,8 @@ diverge says more than either one's headline number.
 
 ### How the baseline is scored today
 
-Only the skill and calibration measures exist so far; the others arrive with the
-arms and portfolios that produce them.
+Of these, only the information coefficient, the reliability table and Brier skill
+exist so far; the others arrive with the arms and portfolios that produce them.
 
 - **Chronological split with an embargo.** The earlier 60% of stored days are
   fitted on and the rest scored. An insider outcome enters at the session after
