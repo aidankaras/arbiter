@@ -153,8 +153,8 @@ object stamped with the filing's EDGAR acceptance time. It contains the filing
 text, issuer metadata, market context truncated at that timestamp, and
 comparable historical cases restricted to those that had already resolved.
 
-Downstream of the packet, nothing fetches. The agent analyst is constructed with
-an empty tool list, so it is not capable of looking anything up. Every prediction
+Downstream of the packet, nothing fetches. The agent analyst, once built, is
+constructed with an empty tool list, so it cannot look anything up. Every prediction
 records the hash of the packet it was made from, which makes any published result
 reproducible and any silent change to packet construction detectable.
 
@@ -165,10 +165,11 @@ and filter on it in the query itself.
 
 ## Strategies
 
-Three event families share one platform. Adding a fourth should require no
-platform changes.
+Three event families are designed to share one platform, so that adding a
+fourth requires no platform changes. Insider transactions and red flags are
+ingested and labeled today; earnings is not yet built.
 
-- **Earnings** — 8-K Item 2.02 plus XBRL company facts. Surprise is computed as a
+- **Earnings** (planned) — 8-K Item 2.02 plus XBRL company facts. Surprise is computed as a
   seasonal random walk against the same quarter last year, scaled by the
   volatility of trailing surprises, which avoids any dependency on paid analyst
   consensus data.
@@ -224,12 +225,15 @@ without passing through explicit risk limits.
 
 ## Stack
 
-Python 3.12 with `uv`. Ingested events are stored as date-partitioned Parquet;
-PostgreSQL holds the append-only prediction and usage ledger, and will hold
-`pgvector` embeddings for comparable retrieval once that exists. LangGraph for orchestration. FastAPI for the
-API and dashboard. PyTorch with `transformers` and `peft` for the neural arm.
-Docker Compose for local and deployed environments. GitHub Actions for scheduled
-ingestion, evaluation, and reporting.
+In use today: Python 3.12 with `uv`; date-partitioned Parquet for ingested
+events and labels, and gzipped JSON Lines for packets; PostgreSQL with Alembic migrations for the
+append-only prediction and usage ledger; scikit-learn for the baseline arm;
+Docker Compose for local services; GitHub Actions for CI (Ruff, strict Pyright,
+pytest, and a full-history secret scan).
+
+Planned with the arms that need them: `pgvector` for comparable retrieval,
+LangGraph for the agent arm, PyTorch with `transformers` and `peft` for the
+neural arm, and FastAPI for the dashboard.
 
 ## Documentation
 
@@ -242,7 +246,7 @@ ingestion, evaluation, and reporting.
 | [`docs/operations.md`](docs/operations.md) | Telemetry, spend ceilings, and running migrations |
 | [`docs/strategies/`](docs/strategies/) | Per-strategy event definitions and features |
 | [`docs/lessons/`](docs/lessons/) | Concept notes covering the design decisions behind each subsystem |
-| [`reports/`](reports/) | Weekly research log, generated automatically |
+| [`reports/`](reports/) | Measurements, each committed with the code that produced it |
 
 ## Roadmap
 
@@ -251,8 +255,8 @@ ingestion, evaluation, and reporting.
 - [x] EDGAR ingestion: Form 4 and 8-K parsing, event extraction, Parquet store
 - [x] Market data and abnormal-return labels
 - [ ] XBRL facts and the earnings strategy
-- [ ] Evidence packet builder with timestamp enforcement and hashing
-- [ ] Baseline arm and evaluation harness
+- [x] Evidence packet builder with timestamp enforcement and hashing
+- [x] Baseline arm and evaluation harness
 - [ ] Neural arm
 - [ ] Public dashboard and shadow portfolios
 - [ ] Agent arm

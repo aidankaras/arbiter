@@ -95,6 +95,8 @@ are embedded.
 
 ## Model routing
 
+*Design for the language-model arms, none of which is built yet.*
+
 Inference is confined to two tasks: extracting structure from filing text, and
 producing a judgment from a packet. Everything else — routing, classification,
 feature construction, labeling, metrics, sizing — is deterministic code, which is
@@ -111,7 +113,7 @@ where the overwhelming majority of the volume lives.
 
 ## Orchestration
 
-LangGraph defines the agent arm's graph: typed state, explicit edges,
+LangGraph is planned to define the agent arm's graph: typed state, explicit edges,
 checkpointing so an interrupted run resumes rather than restarting, and
 interrupt points for human review.
 
@@ -122,7 +124,8 @@ any outcome. Re-running a day produces the same result.
 
 ## Scheduling and deployment
 
-Scheduled work runs on GitHub Actions:
+*Planned. Today the pipeline runs from the command line, and GitHub Actions runs
+CI only.* The intended schedule:
 
 | Cadence | Work | Inference cost |
 |---|---|---|

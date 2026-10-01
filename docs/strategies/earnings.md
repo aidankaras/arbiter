@@ -1,5 +1,7 @@
 # Earnings events
 
+*Status: designed, not built. No earnings ingestion exists yet.*
+
 ## Trigger
 
 8-K filings carrying Item 2.02 (Results of Operations and Financial Condition),

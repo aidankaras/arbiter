@@ -48,3 +48,6 @@ requirements-export.txt
 
 # Claude Code per-user settings
 .claude/settings.local.json
+
+# Local run logs
+.logs/

@@ -21,8 +21,8 @@ a bug even if every test passes.
 
 1. **Evidence packets are immutable and content-hashed.** Every prediction stores
    the hash of the packet it came from. Never mutate a packet after construction.
-2. **Nothing downstream of the packet fetches.** The agent analyst is constructed
-   with an empty tool list. Keep it that way; the boundary is what makes the
+2. **Nothing downstream of the packet fetches.** The agent analyst, when built, is
+   constructed with an empty tool list. Build it that way; the boundary is what makes the
    four-arm comparison valid.
 3. **Every retrieval is timestamp-filtered.** Comparable lookups carry the event's
    `as_of` and exclude anything that had not resolved by then. Enforce this in the
@@ -100,11 +100,9 @@ nothing downstream can tell the two apart.
   because every field was hashed; the leak was in how one was derived. After
   writing a review question, name the unit it covers and look one seam outward:
   the caller, the level below, the empty input, the neighbour sharing state.
-  Fuller treatment in the `verification-discipline` skill.
-- **Planning documents live outside this repository.** The spec and phase plans are kept
-  under `~/Base/references/arbiter/`, never in this tree, so that planning context
-  never reaches a public reader. Design reasoning that belongs to the system goes in
-  `docs/`; reasoning about why the project exists does not go in the repository at all.
+- **Design reasoning that belongs to the system goes in `docs/`.** Methodology,
+  architecture and the reasons behind a structural choice are documented there, next
+  to the code they constrain, rather than in commit messages or pull requests alone.
 
 ## Failure modes this codebase has actually hit
 

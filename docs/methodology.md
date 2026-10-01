@@ -104,8 +104,8 @@ than it needed to be — a packet missing a bar is weaker evidence, while a pack
 holding an unclosed one is false evidence.
 
 **No downstream fetching.** The three forecasting arms that consume a packet
-receive no capability to retrieve anything else. The agent analyst is constructed
-with an empty tool list, so the constraint holds structurally rather than
+receive no capability to retrieve anything else. The agent analyst (not yet
+built) is constructed with an empty tool list, so the constraint holds structurally rather than
 depending on a prompt being obeyed.
 
 Without these, the four arms cannot be shown to have seen the same information,
