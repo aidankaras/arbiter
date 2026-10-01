@@ -220,6 +220,30 @@ The last is the most informative. Two approaches with similar aggregate accuracy
 that disagree often are doing different things, and which one is right when they
 diverge says more than either one's headline number.
 
+### How the baseline is scored today
+
+Only the skill and calibration measures exist so far; the others arrive with the
+arms and portfolios that produce them.
+
+- **Chronological split with an embargo.** The earlier 60% of stored days are
+  fitted on and the rest scored. An insider outcome enters at the session after
+  its filing and closes five sessions later, so scored days within six sessions
+  of the last fitted day are withheld: a forecast made then would share market
+  moves with outcomes the model was fitted on. The report names the withheld
+  days.
+- **One observation per issuer per day, on both sides.** Several insiders at
+  one company on one day resolve to a single outcome. Scoring averages their
+  forecasts into one; fitting weights each row by its share of the issuer-day,
+  so a Form 4 carrying many transactions counts once.
+- **Information coefficient.** The Spearman rank correlation between forecast
+  and abnormal return across a day's issuers, averaged over scored days with at
+  least ten issuers. Its standard error treats days as independent. Sampled
+  days are four sessions apart while outcomes run five, so adjacent days' windows
+  overlap by a session and the stated error is somewhat optimistic.
+- **Brier skill** is measured against forecasting the scored period's own base
+  rate for every issuer-day. That rate was not knowable in advance, which makes
+  it a harder reference than any constant the model could have used.
+
 ## Backtest contamination
 
 The LLM arms were trained on data that covers the backtest period. They may

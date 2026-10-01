@@ -13,6 +13,7 @@ a new report, not an edit to the old one.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from datetime import date
 
 from arbiter.arms.evaluate import Evaluation
@@ -38,6 +39,13 @@ def _signed(value: float, places: int = 4) -> str:
     return f"{value:+.{places}f}"
 
 
+#: Brier skill this close to zero is reported as no difference from the base rate.
+#: No standard error is computed for it, and a sign on a value this small would
+#: read as a finding — "worse than a constant" under a strong discrimination
+#: result — when it is the noise floor of a few hundred observations.
+_NEGLIGIBLE_SKILL = 0.005
+
+
 def _calibration_verdict(evaluation: Evaluation) -> str:
     """State what the forecasts' stated probabilities were worth.
 
@@ -49,17 +57,17 @@ def _calibration_verdict(evaluation: Evaluation) -> str:
     skill = evaluation.brier_skill
     if math.isnan(skill):
         return ""
+    if abs(skill) < _NEGLIGIBLE_SKILL:
+        return (
+            f" The stated probabilities are worth no more than forecasting the base "
+            f"rate of {evaluation.base_rate:.1%} for every event: a Brier skill of "
+            f"{skill:+.4f} is indistinguishable from it." + _bias_direction(evaluation)
+        )
     if skill > 0:
         return (
             f" The stated probabilities are worth slightly more than the base rate "
             f"(Brier skill {skill:+.4f}), which is a weaker claim than discrimination "
             "and should be read as one."
-        )
-    if skill == 0:
-        return (
-            " The stated probabilities are worth exactly what forecasting the base "
-            f"rate of {evaluation.base_rate:.1%} for every event would have been "
-            "(Brier skill 0), so they carry no information beyond it."
         )
     return (
         f" Calibration is worse than that: a Brier skill of {skill:+.4f} means "
@@ -157,6 +165,18 @@ def _verdict(evaluation: Evaluation) -> str:
     )
 
 
+def _embargo_lines(embargoed: Sequence[date]) -> list[str]:
+    """Name the days withheld because fitted outcomes were still open on them."""
+    if not embargoed:
+        return []
+    named = ", ".join(day.isoformat() for day in embargoed)
+    return [
+        f"Withheld from both sides: {named}. Fitted outcomes were still open on",
+        "those days, so forecasts made then would share market moves with returns",
+        "the model had already been fitted on.",
+    ]
+
+
 def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
     """Render an evaluation as a Markdown report.
 
@@ -197,6 +217,7 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         "the base rate |",
         "",
         "The split is chronological: every scored day falls after every fitted day.",
+        *_embargo_lines(evaluation.embargoed_days),
         "Discrimination is credited once per issuer per day, because several insiders",
         "at one company on one day resolve to a single outcome.",
         "",

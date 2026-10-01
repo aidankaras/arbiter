@@ -28,12 +28,12 @@ decision provenance and per-decision cost accounting.
 > future tense; anything in the present tense refers to code in this repository.
 > Paper trading only, always.
 >
-> **No measurement currently stands.** The first baseline result was withdrawn
-> on 2026-09-19 after the event store was found to hold duplicated rows from two
-> separate causes, both since fixed and pinned by contract tests over recorded
-> filings. `reports/baseline-insider.md` records what was claimed and why it no
-> longer holds. A replacement is computed from re-ingested data rather than
-> edited into the old one.
+> **Current measurement: the baseline arm on insider transactions.** Mean
+> information coefficient +0.121 (t = 3.09) over 11 out-of-sample days and 592
+> issuer-days, with calibration no better than forecasting the base rate. One
+> sample from one regime; see [`reports/baseline-insider.md`](reports/baseline-insider.md).
+> An earlier result was withdrawn after duplicated rows were found in the event
+> store; [`reports/withdrawn/`](reports/withdrawn/) keeps it and the reason.
 
 ## Quickstart
 

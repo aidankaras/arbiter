@@ -18,7 +18,9 @@ from arbiter.evaluation.report import render_baseline_report
 GENERATED = date(2026, 9, 18)
 
 
-def _evaluation(mean: float, standard_error: float, t: float) -> Evaluation:
+def _evaluation(
+    mean: float, standard_error: float, t: float, embargoed: list[date] | None = None
+) -> Evaluation:
     return Evaluation(
         ic=ICSummary(
             mean=mean,
@@ -36,6 +38,7 @@ def _evaluation(mean: float, standard_error: float, t: float) -> Evaluation:
         base_rate=0.486,
         train_days=[date(2026, 3, 2), date(2026, 6, 1)],
         test_days=[date(2026, 6, 8), date(2026, 8, 11)],
+        embargoed_days=embargoed or [],
         train_events=9000,
         test_events=6000,
         test_issuer_days=3400,
@@ -105,6 +108,23 @@ def test_the_chronological_split_is_stated_so_a_reader_can_check_it():
     assert "every scored day falls after every fitted day" in rendered
 
 
+def test_days_withheld_between_fitting_and_scoring_are_named():
+    """A reader checking the split needs to see the gap, not infer it from dates."""
+    withheld = [date(2026, 6, 2), date(2026, 6, 4)]
+    rendered = render_baseline_report(
+        _evaluation(0.004, 0.011, 0.36, embargoed=withheld), GENERATED
+    )
+
+    assert "2026-06-02, 2026-06-04" in rendered
+    assert "still open" in rendered
+
+
+def test_a_split_with_nothing_withheld_does_not_claim_an_embargo():
+    rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
+
+    assert "still open" not in rendered
+
+
 def test_calibration_bands_are_rendered_with_their_counts():
     rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
 
@@ -153,6 +173,18 @@ def test_a_forecast_worse_than_the_base_rate_is_said_so_in_the_verdict():
 
     assert "less useful than forecasting the base rate" in verdict
     assert "-0.2224" in verdict
+
+
+@pytest.mark.parametrize("skill", [-0.0003, 0.0003])
+def test_a_brier_skill_near_zero_is_not_given_a_direction(skill: float):
+    """A sign on a value this small would read as a finding it is not."""
+    near = replace(_evaluation(0.004, 0.011, 0.36), brier_skill=skill)
+
+    verdict = render_baseline_report(near, GENERATED).split("## What this rests on")[0]
+
+    assert "indistinguishable from it" in verdict
+    assert "less useful" not in verdict
+    assert "worth slightly more" not in verdict
 
 
 def test_a_positive_brier_skill_is_still_qualified_in_the_verdict():
@@ -204,7 +236,7 @@ def test_exactly_zero_skill_is_not_called_better_than_the_base_rate():
 
     verdict = render_baseline_report(neutral, GENERATED).split("## What this rests on")[0]
 
-    assert "worth exactly what forecasting the base rate" in verdict
+    assert "indistinguishable from it" in verdict
     assert "worth slightly more" not in verdict
 
 

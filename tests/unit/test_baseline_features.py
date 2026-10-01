@@ -108,10 +108,51 @@ def test_value_enters_on_a_log_scale():
 
 def test_the_traded_fraction_is_measured_against_the_holding_before_the_trade():
     """Selling a tenth of a stake says less than selling most of it."""
-    tenth = event_features(_row(shares=Decimal("1000"), remaining_shares=Decimal("9000")), 1)
+    tenth = event_features(
+        _row(transaction_code="S", shares=Decimal("1000"), remaining_shares=Decimal("9000")), 1
+    )
 
     assert tenth["fraction_of_holding"] == pytest.approx(0.1)
     assert tenth["reports_holding"] == 1.0
+
+
+def test_a_purchase_is_measured_against_the_holding_before_it():
+    """Form 4 reports the holding *after* the trade, so a purchase subtracts.
+
+    Buying 1,000 shares to end at 10,000 adds to a stake of 9,000. Adding the
+    shares back, as is right for a sale, would read it as a tenth of 11,000 and
+    understate every purchase relative to an equal-sized sale.
+    """
+    added = event_features(
+        _row(transaction_code="P", shares=Decimal("1000"), remaining_shares=Decimal("10000")), 1
+    )
+
+    assert added["fraction_of_holding"] == pytest.approx(1000 / 9000)
+    assert added["reports_holding"] == 1.0
+
+
+def test_opening_a_position_is_a_purchase_of_the_whole_stake():
+    """The mirror of selling out: nothing was held before, everything is new."""
+    opened = event_features(
+        _row(transaction_code="P", shares=Decimal("1000"), remaining_shares=Decimal("1000")), 1
+    )
+
+    assert opened["fraction_of_holding"] == 1.0
+    assert opened["reports_holding"] == 1.0
+
+
+def test_a_purchase_reporting_less_than_it_bought_is_read_as_unknown():
+    """A post-trade holding below the shares bought cannot describe one stake.
+
+    Such filings exist — the holding is often reported for a different class or
+    account — and no pre-trade stake can be recovered from them.
+    """
+    unclear = event_features(
+        _row(transaction_code="P", shares=Decimal("1000"), remaining_shares=Decimal("500")), 1
+    )
+
+    assert unclear["fraction_of_holding"] == 0.0
+    assert unclear["reports_holding"] == 0.0
 
 
 def test_a_filing_that_reports_no_holding_is_not_read_as_having_sold_out():
@@ -123,7 +164,9 @@ def test_a_filing_that_reports_no_holding_is_not_read_as_having_sold_out():
 
 
 def test_selling_the_entire_stake_is_bounded_at_one():
-    whole = event_features(_row(shares=Decimal("1000"), remaining_shares=Decimal("0")), 1)
+    whole = event_features(
+        _row(transaction_code="S", shares=Decimal("1000"), remaining_shares=Decimal("0")), 1
+    )
 
     assert whole["fraction_of_holding"] == 1.0
 
@@ -169,6 +212,29 @@ def test_clustered_filing_counts_distinct_insiders_not_filings():
     computed = day_features(rows)
 
     assert all(row["insiders_trading_same_issuer"] == 2.0 for row in computed)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_an_insider_filing_later_in_the_day_is_not_counted_by_an_earlier_one(reverse: bool):
+    """A forecast is made at its filing's acceptance, not at the end of the day.
+
+    An evidence packet is frozen at that instant, so a baseline feature that saw
+    the day's later filings would hold information the other arms cannot, and
+    the comparison would no longer be between identical inputs.
+    """
+    rows = [
+        _row(insider_name="A", as_of=datetime(2026, 8, 3, 13, 0, tzinfo=UTC)),
+        _row(insider_name="B", as_of=datetime(2026, 8, 3, 21, 0, tzinfo=UTC)),
+    ]
+    if reverse:
+        rows.reverse()
+
+    computed = {
+        str(row["insider_name"]): features["insiders_trading_same_issuer"]
+        for row, features in zip(rows, day_features(rows), strict=True)
+    }
+
+    assert computed == {"A": 1.0, "B": 2.0}
 
 
 def test_clustering_is_counted_per_issuer_not_across_the_day():

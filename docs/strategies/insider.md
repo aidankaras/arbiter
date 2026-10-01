@@ -16,10 +16,10 @@ The baseline arm uses these features, defined in `src/arbiter/arms/features.py`:
 |---|---|
 | `is_purchase` | Open-market purchase (code P) rather than sale (code S) |
 | `log_value_usd` | Log of the transaction's dollar value |
-| `fraction_of_holding` | Shares traded as a fraction of the stake held before the trade |
+| `fraction_of_holding` | Shares traded as a fraction of the stake held before the trade, reconstructed from the post-trade holding Form 4 reports (added back for a sale, subtracted for a purchase) |
 | `reports_holding` | Whether the filing reported a remaining holding, so a missing value is distinguishable from zero |
 | `is_officer`, `is_director`, `is_ten_percent_owner` | Filer role, as independent flags because one insider often holds several |
-| `insiders_trading_same_issuer` | Distinct insiders filing for the same issuer on the same day |
+| `insiders_trading_same_issuer` | Distinct insiders who had filed for the same issuer that day by this filing's acceptance, itself included |
 
 Rule 10b5-1 status is a screening criterion rather than a feature: scheduled
 trades are excluded before scoring, so the column would be constant. Size

@@ -6,8 +6,14 @@ rather than an edit to the old one.
 
 ## What is here now
 
-`baseline-insider.md` — **withdrawn 2026-09-19; no figure in it should be
-cited.** The event store it was computed from held duplicated rows, from two
+`baseline-insider.md` — the baseline arm on insider transactions, computed
+2026-10-01 from 29 re-ingested days between March and August 2026. Mean
+information coefficient +0.121 (t = 3.09) over 11 scored days and 592
+issuer-days; Brier skill indistinguishable from forecasting the base rate. One
+sample and one regime: a measurement of the control, not a strategy.
+
+`withdrawn/baseline-insider-2026-09-19.md` — **withdrawn; no figure in it should
+be cited.** The event store it was computed from held duplicated rows, from two
 separate causes. A filing's single qualifying transaction had been stored once
 per line on its form, inflating events by a factor averaging 2.94 across days
 and ranging from 2.34 to 4.59. Separately, one transaction filed by several
@@ -17,9 +23,12 @@ file alone.
 
 Both causes are fixed and pinned by contract tests over recorded filings. The
 report is kept rather than deleted so that what was claimed at its commit stays
-inspectable, which is the same reason results are committed at all. It will be
-replaced by a new report computed from re-ingested data rather than edited in
-place.
+inspectable, which is the same reason results are committed at all. Before
+its replacement was computed, a review of the evaluation found four further
+defects, each fixed and tested first: a clustering feature that counted filings
+accepted later the same day, a holding fraction miscomputed for purchases, no
+embargo between fitted and scored outcome windows, and a fit that counted
+transaction rows while scoring counted issuer-days.
 
 `redflag-population.md` — why the red-flag domain has no baseline arm yet. The
 screened population is 94% officer transitions, while the restatements and

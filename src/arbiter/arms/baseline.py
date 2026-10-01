@@ -80,9 +80,14 @@ class FittedBaseline:
 
 
 def fit_baseline(
-    features: Sequence[Mapping[str, float]], outcomes: Sequence[int]
+    features: Sequence[Mapping[str, float]],
+    outcomes: Sequence[int],
+    weights: Sequence[float] | None = None,
 ) -> FittedBaseline:
     """Fit the baseline arm on features and realised outcome signs.
+
+    `weights` scale each row's contribution to both the standardisation and the
+    fit, so that rows sharing one observation can be counted as one.
 
     Raises:
         DegenerateTrainingSetError: no events, mismatched lengths, or a single
@@ -100,6 +105,9 @@ def fit_baseline(
             "separate; a model fitted here would return one constant probability"
         )
         raise DegenerateTrainingSetError(msg)
+    if weights is not None and len(weights) != len(features):
+        msg = f"{len(weights)} weights against {len(features)} feature rows"
+        raise DegenerateTrainingSetError(msg)
 
     pipeline = Pipeline(
         [
@@ -114,7 +122,13 @@ def fit_baseline(
             ),
         ]
     )
-    pipeline.fit(np.asarray(as_matrix(features)), np.asarray(outcomes))
+    sample_weight = None if weights is None else np.asarray(weights)
+    pipeline.fit(
+        np.asarray(as_matrix(features)),
+        np.asarray(outcomes),
+        scale__sample_weight=sample_weight,
+        model__sample_weight=sample_weight,
+    )
 
     return FittedBaseline(
         pipeline=pipeline,
