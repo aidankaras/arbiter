@@ -1,6 +1,6 @@
 name: Standards audit
 
-# A scheduled review of the whole repository against the correctness properties
+# An on-demand review of the whole repository against the correctness properties
 # this project depends on, rather than a review of one diff. Defects here are
 # rarely local: the ones that have mattered most were a feature that could not
 # vary, a window that deleted one weekday, and a test that asserted its own
@@ -12,12 +12,8 @@ name: Standards audit
 # the code that produces it.
 
 on:
-  schedule:
-    # 09:00 UTC on the 1st and 15th. Day-of-week is left unrestricted on
-    # purpose: cron combines a restricted day-of-month with a restricted
-    # day-of-week using OR, so naming both would fire far more often than
-    # intended.
-    - cron: "0 9 1,15 * *"
+  # Run by hand from the Actions tab, so that an audit is started when someone
+  # is available to review its findings rather than left as an open pull request.
   workflow_dispatch:
 
 concurrency:
@@ -211,13 +207,13 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
           git add reports/standards-audit.md
-          git commit -m "Record the scheduled standards audit for $(date -u +%Y-%m-%d)"
+          git commit -m "Record the standards audit for $(date -u +%Y-%m-%d)"
           git push -u origin "$branch"
 
           gh pr create \
             --title "Standards audit: $(date -u +%Y-%m-%d)" \
             --body "$(printf '%s\n' \
-              'A scheduled review of the whole repository against the correctness properties stated in `CLAUDE.md`, `docs/methodology.md` and `docs/code-standards.md`.' \
+              'An on-demand review of the whole repository against the correctness properties stated in `CLAUDE.md`, `docs/methodology.md` and `docs/code-standards.md`.' \
               '' \
               'The audit proposes and does not amend: it writes `reports/standards-audit.md` and changes nothing else. Findings are ranked by what each would corrupt, and each names a file, a line and a demonstrable failure.' \
               '' \
