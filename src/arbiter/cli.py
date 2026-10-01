@@ -202,7 +202,11 @@ def report(
         # `load_days` is what raises: features are built as each day is read,
         # so the call has to sit inside the handler rather than before it.
         loaded = load_days(store, domain, days)
-        evaluation = evaluate_baseline(loaded, train_fraction)
+        # An outcome enters at the session after its filing and closes HORIZONS
+        # sessions later, so it can stay open that many sessions plus one.
+        evaluation = evaluate_baseline(
+            loaded, train_fraction, embargo_sessions=HORIZONS[domain] + 1
+        )
     except UnsupportedDomainError as exc:
         typer.echo(f"the baseline arm cannot score '{domain}': {exc}", err=True)
         raise typer.Exit(code=2) from None

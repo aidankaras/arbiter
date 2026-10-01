@@ -18,7 +18,9 @@ from arbiter.evaluation.report import render_baseline_report
 GENERATED = date(2026, 9, 18)
 
 
-def _evaluation(mean: float, standard_error: float, t: float) -> Evaluation:
+def _evaluation(
+    mean: float, standard_error: float, t: float, embargoed: list[date] | None = None
+) -> Evaluation:
     return Evaluation(
         ic=ICSummary(
             mean=mean,
@@ -36,6 +38,7 @@ def _evaluation(mean: float, standard_error: float, t: float) -> Evaluation:
         base_rate=0.486,
         train_days=[date(2026, 3, 2), date(2026, 6, 1)],
         test_days=[date(2026, 6, 8), date(2026, 8, 11)],
+        embargoed_days=embargoed or [],
         train_events=9000,
         test_events=6000,
         test_issuer_days=3400,
@@ -103,6 +106,23 @@ def test_the_chronological_split_is_stated_so_a_reader_can_check_it():
     rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
 
     assert "every scored day falls after every fitted day" in rendered
+
+
+def test_days_withheld_between_fitting_and_scoring_are_named():
+    """A reader checking the split needs to see the gap, not infer it from dates."""
+    withheld = [date(2026, 6, 2), date(2026, 6, 4)]
+    rendered = render_baseline_report(
+        _evaluation(0.004, 0.011, 0.36, embargoed=withheld), GENERATED
+    )
+
+    assert "2026-06-02, 2026-06-04" in rendered
+    assert "still open" in rendered
+
+
+def test_a_split_with_nothing_withheld_does_not_claim_an_embargo():
+    rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
+
+    assert "still open" not in rendered
 
 
 def test_calibration_bands_are_rendered_with_their_counts():

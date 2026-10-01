@@ -31,6 +31,7 @@ from arbiter.evaluation.metrics import (
     information_coefficient,
     summarise_ic,
 )
+from arbiter.evaluation.resolution import sessions_after
 
 #: The share of days used to fit. The remainder is held out and scored once.
 TRAIN_FRACTION = 0.6
@@ -61,6 +62,7 @@ class Evaluation:
     base_rate: float
     train_days: list[date]
     test_days: list[date]
+    embargoed_days: list[date]
     train_events: int
     test_events: int
     test_issuer_days: int
@@ -92,11 +94,10 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
         outcomes.setdefault(str(label["accession_no"]), float(label["abnormal_return"]))
 
     # Features are computed over the whole day and only then narrowed to the
-    # events that resolved. One feature counts the insiders trading the same
-    # issuer that day, and computing it over the labelled subset would make it
-    # depend on which events turned out to be priceable — a fact from after the
-    # filing. At the moment a forecast is made, every filing that day is
-    # visible and none of their outcomes are.
+    # events that resolved. One feature counts the insiders who had filed for
+    # the same issuer by each event's acceptance, and computing it over the
+    # labelled subset would make it depend on which events turned out to be
+    # priceable — a fact from after the filing.
     features = day_features(events)
     kept = [
         index for index, event in enumerate(events) if str(event["accession_no"]) in outcomes
@@ -133,10 +134,24 @@ def _by_issuer(forecasts: Sequence[float], day: DayOfEvents) -> tuple[list[float
     return [mean for mean, _ in means], [realised for _, realised in means]
 
 
+def _issuer_day_weights(day: DayOfEvents) -> list[float]:
+    """Weight each row by one over the number of rows its issuer has that day."""
+    rows_per_issuer: dict[int, int] = {}
+    for issuer in day.issuers:
+        rows_per_issuer[issuer] = rows_per_issuer.get(issuer, 0) + 1
+    return [1.0 / rows_per_issuer[issuer] for issuer in day.issuers]
+
+
 def split_days(
-    days: Sequence[date], train_fraction: float = TRAIN_FRACTION
+    days: Sequence[date], train_fraction: float = TRAIN_FRACTION, *, embargo_sessions: int
 ) -> tuple[list[date], list[date]]:
     """Divide days chronologically into what is fitted on and what is scored.
+
+    `embargo_sessions` is how many sessions past a fitted day its outcomes can
+    stay open. Scored days on or before that many sessions after the last fitted
+    day are dropped: their forecasts would be made while fitted outcomes were
+    still unrealised, and both would share the same market moves. For a
+    five-session horizon entered at the next open, that is six.
 
     Raises:
         InsufficientObservationsError: the split would leave fewer than one
@@ -146,6 +161,9 @@ def split_days(
     ordered = sorted(days)
     cut = int(len(ordered) * train_fraction)
     train, test = ordered[:cut], ordered[cut:]
+    if train and embargo_sessions > 0:
+        realised_by = sessions_after(train[-1], embargo_sessions)
+        test = [day for day in test if day > realised_by]
 
     if not train or len(test) < 2:
         msg = (
@@ -157,7 +175,10 @@ def split_days(
 
 
 def evaluate_baseline(
-    days: Sequence[DayOfEvents], train_fraction: float = TRAIN_FRACTION
+    days: Sequence[DayOfEvents],
+    train_fraction: float = TRAIN_FRACTION,
+    *,
+    embargo_sessions: int,
 ) -> Evaluation:
     """Fit the baseline on the earlier days and score it on the later ones.
 
@@ -166,7 +187,10 @@ def evaluate_baseline(
             events on either side of the split.
     """
     populated = [day for day in days if len(day) > 0]
-    train_days, test_days = split_days([day.day for day in populated], train_fraction)
+    train_days, test_days = split_days(
+        [day.day for day in populated], train_fraction, embargo_sessions=embargo_sessions
+    )
+    embargoed_days = [day.day for day in populated if train_days[-1] < day.day < test_days[0]]
 
     by_day = {day.day: day for day in populated}
     train = [by_day[day] for day in train_days]
@@ -174,7 +198,13 @@ def evaluate_baseline(
 
     train_features = [row for day in train for row in day.features]
     train_outcomes = [outcome for day in train for outcome in day.outcomes]
-    model: FittedBaseline = fit_baseline(train_features, train_outcomes)
+    # Scoring credits each issuer once per day, so fitting does too: every row
+    # is weighted by the share it holds of its issuer-day. Unweighted, one Form 4
+    # carrying forty transactions would pull the fit forty times as hard as a
+    # single-line filing, and the model would be fitted to a different
+    # population from the one it is judged on.
+    train_weights = [weight for day in train for weight in _issuer_day_weights(day)]
+    model: FittedBaseline = fit_baseline(train_features, train_outcomes, train_weights)
 
     daily: dict[date, float] = {}
     pooled_probabilities: list[float] = []
@@ -215,6 +245,7 @@ def evaluate_baseline(
         base_rate=sum(pooled_outcomes) / len(pooled_outcomes),
         train_days=train_days,
         test_days=test_days,
+        embargoed_days=embargoed_days,
         train_events=len(train_features),
         test_events=scored_events,
         test_issuer_days=issuer_days,
