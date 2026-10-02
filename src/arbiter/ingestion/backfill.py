@@ -25,7 +25,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from arbiter.evaluation.resolution import MissingBenchmarkSeriesError
 from arbiter.ingestion.edgar import is_trading_day
+from arbiter.ingestion.market import MissingCredentialsError, SystemicRejectionError
 
 #: A run losing this share of its days is failing for a reason that will not
 #: resolve itself, and continuing would spend hours producing a dataset whose
@@ -48,19 +50,13 @@ class SystemicBackfillError(RuntimeError):
     """Raised when so many days fail that the run is not worth continuing."""
 
 
-def _run_level_faults() -> tuple[type[BaseException], ...]:
-    """Return the failures that indict the run rather than one day.
-
-    Imported lazily because they live in modules that reach the network, and
-    day selection must stay importable without them.
-    """
-    from arbiter.evaluation.resolution import MissingBenchmarkSeriesError
-    from arbiter.ingestion.market import MissingCredentialsError, SystemicRejectionError
-
-    return (MissingCredentialsError, SystemicRejectionError, MissingBenchmarkSeriesError)
-
-
-_RUN_LEVEL_FAULTS = _run_level_faults()
+#: Failures that indict the run rather than one day, so they abort it instead
+#: of being recorded against the day they happened on.
+_RUN_LEVEL_FAULTS = (
+    MissingCredentialsError,
+    SystemicRejectionError,
+    MissingBenchmarkSeriesError,
+)
 
 
 def _with_retries[T](step: Callable[[date], T], day: date) -> T:

@@ -120,13 +120,14 @@ def _bias_direction(evaluation: Evaluation) -> str:
 
     if abs(weighted) >= _MATERIAL_RESIDUAL:
         direction = "high" if weighted > 0 else "low"
+        # The direction is count-weighted and the tallies are not, so a few
+        # heavy bands can outvote the majority; the opposing count is whichever
+        # tally runs against the direction, not the smaller one.
+        opposed = low if weighted > 0 else high
         consistency = (
             "in every populated band"
             if agree
-            else (
-                f"on balance, with {min(high, low)} of {len(residuals)} bands "
-                "running the other way"
-            )
+            else (f"on balance, with {opposed} of {len(residuals)} bands running the other way")
         )
         return (
             f" The forecasts run {direction} by {abs(weighted):.3f} across the "

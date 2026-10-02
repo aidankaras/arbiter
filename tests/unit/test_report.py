@@ -312,3 +312,26 @@ def test_the_calibration_table_states_the_count_it_sums_to():
 
     assert "Pooled over all 1,600 scored issuer-days" in calibration
     assert sum(band.count for band in evaluation.calibration) == 1600
+
+
+def test_the_bands_running_against_a_weighted_shift_are_counted_as_such():
+    """The direction is weighted by issuer-days and the band tally is not.
+
+    Two light bands a hair high are outweighed by one heavy band far low, so the
+    forecasts run low on balance and the two light bands are the ones running the
+    other way. Reporting the smaller tally instead said one.
+    """
+    outvoted = replace(
+        _evaluation(0.004, 0.011, 0.36),
+        brier_skill=-0.04,
+        calibration=[
+            CalibrationBin(lower=0.1, upper=0.2, forecast=0.101, realised=0.100, count=10),
+            CalibrationBin(lower=0.2, upper=0.3, forecast=0.201, realised=0.200, count=10),
+            CalibrationBin(lower=0.3, upper=0.4, forecast=0.300, realised=0.800, count=5),
+        ],
+    )
+
+    verdict = render_baseline_report(outvoted, GENERATED).split("## What this rests on")[0]
+
+    assert "run low" in verdict
+    assert "with 2 of 3 bands running the other way" in verdict
