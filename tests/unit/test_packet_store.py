@@ -207,3 +207,17 @@ def test_many_packets_keep_their_order_and_their_identities(tmp_path: Path):
     assert [packet.content_hash for packet in reloaded] == [
         packet.content_hash for packet in packets
     ]
+
+
+def test_a_failed_write_leaves_no_staging_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    def explode(data: bytes) -> bytes:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(gzip, "compress", explode)
+
+    with pytest.raises(OSError, match="disk full"):
+        write_packets([_packet()], tmp_path, "insider", DAY)
+
+    assert not partition_exists(tmp_path, "insider", DAY)
+    leftovers = list((tmp_path / "insider").glob("*.tmp"))
+    assert leftovers == [], "a failed write must not leave staging files behind"

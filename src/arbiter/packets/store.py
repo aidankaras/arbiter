@@ -83,8 +83,12 @@ def write_packets(
     # than a truncated file that reads as a short day.
     with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as handle:
         temporary = Path(handle.name)
-        handle.write(gzip.compress(payload))
-    temporary.replace(path)
+    try:
+        temporary.write_bytes(gzip.compress(payload))
+        temporary.replace(path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
     return path
 
 

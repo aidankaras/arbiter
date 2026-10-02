@@ -139,7 +139,7 @@ def plan_price_windows(
     """
     windows: dict[str, tuple[date, date]] = {}
     for event in events:
-        start = event.as_of.date() - timedelta(days=_LEAD_DAYS)
+        start = event.as_of.astimezone(SEC_TIMEZONE).date() - timedelta(days=_LEAD_DAYS)
         # Fetched past the closing session, unlike the ripeness test above:
         # an unlisted closure would otherwise leave the window one session short
         # of the exit and cost the event entirely, while an over-long window
