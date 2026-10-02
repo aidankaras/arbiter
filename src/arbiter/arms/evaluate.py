@@ -170,17 +170,20 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
     )
 
 
-def _issuer_day_outcomes(days: Sequence[DayOfEvents]) -> list[int]:
-    """Return whether each issuer-day rose, decided as scoring decides it.
+def _rose(issuer_returns: Sequence[float]) -> list[int]:
+    """Return whether each issuer-day rose, given its mean return.
 
-    The sign of the issuer's mean return that day, not an average of its rows'
-    signs: two filings returning +0.05 and -0.01 are one issuer-day that rose.
+    The one definition of the outcome, used for both the fitted reference rate
+    and the scored outcomes: the sign of the issuer's mean return that day, not
+    an average of its rows' signs. Two filings returning +0.05 and -0.01 are
+    one issuer-day that rose.
     """
-    outcomes: list[int] = []
-    for day in days:
-        _, returns = _by_issuer(day.returns, day)
-        outcomes.extend(int(realised > 0) for realised in returns)
-    return outcomes
+    return [int(realised > 0) for realised in issuer_returns]
+
+
+def _issuer_day_outcomes(days: Sequence[DayOfEvents]) -> list[int]:
+    """Return whether each issuer-day across `days` rose."""
+    return [outcome for day in days for outcome in _rose(_by_issuer(day.returns, day)[1])]
 
 
 def _by_issuer(forecasts: Sequence[float], day: DayOfEvents) -> tuple[list[float], list[float]]:
@@ -260,9 +263,6 @@ def evaluate_baseline(
             events on either side of the split.
     """
     populated = [day for day in days if len(day) > 0]
-    # Ranked or not, a scored day's events that resolved to nothing are counted;
-    # a day on which none resolved is never split, so it is counted here.
-    unresolved_days = [day for day in days if len(day) == 0]
     train_days, test_days = split_days(
         [day.day for day in populated], train_fraction, embargo_sessions=embargo_sessions
     )
@@ -288,7 +288,10 @@ def evaluate_baseline(
     pooled_probabilities: list[float] = []
     pooled_outcomes: list[int] = []
     issuer_days = 0
-    unlabelled = sum(day.unlabelled for day in unresolved_days if day.day >= test_days[0])
+    # Counted over every day from the first scored one, including days on which
+    # nothing resolved: those never enter the split, but their events were filed
+    # in the scoring period all the same.
+    unlabelled = sum(day.unlabelled for day in days if day.day >= test_days[0])
     # Kept apart from the pooled counts, which are now issuer-level: the report
     # states both, and conflating them would understate the data behind a run.
     scored_events = 0
@@ -297,7 +300,6 @@ def evaluate_baseline(
         probabilities = forecast(model, day.features)
         issuer_forecasts, issuer_returns = _by_issuer(probabilities, day)
         scored_events += len(day)
-        unlabelled += day.unlabelled
 
         # Calibration, Brier skill and the base rate are pooled at the issuer-day
         # level, the same unit the information coefficient is credited at. Pooled
@@ -305,7 +307,7 @@ def evaluate_baseline(
         # Form 4 carried forty-four on a measured day — so the reliability curve's
         # counts read as independent observations while being copies of a few.
         pooled_probabilities.extend(issuer_forecasts)
-        pooled_outcomes.extend(int(realised > 0) for realised in issuer_returns)
+        pooled_outcomes.extend(_rose(issuer_returns))
         # A day with a handful of issuers produces a rank correlation that is
         # mostly noise; including it would add variance to the average without
         # adding information.

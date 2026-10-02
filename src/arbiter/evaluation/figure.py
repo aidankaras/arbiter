@@ -13,10 +13,11 @@ read which one it is on.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Callable
 from xml.sax.saxutils import escape
 
 from arbiter.arms.evaluate import Evaluation
+from arbiter.evaluation.metrics import defined_ic
 
 _WIDTH = 880
 _HEIGHT = 340
@@ -73,14 +74,21 @@ def _ticks(low: float, high: float, step: float) -> list[float]:
     return [round(index * step, 10) for index in range(first, last + 1)]
 
 
-def _floor_tenth(value: float) -> float:
-    """Round down to a tenth, treating float noise such as 0.6000000001 as 0.6."""
-    return math.floor(round(value * 10, 9)) / 10
+def _tenth(value: float, direction: Callable[[float], int]) -> float:
+    """Round to a tenth with `math.floor` or `math.ceil`.
+
+    Float noise such as 0.6000000001 is treated as 0.6, so an exact tenth is
+    never pushed one step outward.
+    """
+    return direction(round(value * 10, 9)) / 10
 
 
-def _ceil_tenth(value: float) -> float:
-    """Round up to a tenth, treating float noise such as 0.6000000001 as 0.6."""
-    return math.ceil(round(value * 10, 9)) / 10
+def _heading(left: float, top: float, title: str, subtitle: str) -> list[str]:
+    """A panel's title and the line beneath it saying what it is drawn over."""
+    return [
+        _text(left, top + 14, title, size=13, fill=_INK, weight="600"),
+        _text(left, top + 30, subtitle, fill=_INK_SECONDARY),
+    ]
 
 
 def _bar(x: float, zero: float, top: float) -> str:
@@ -108,35 +116,25 @@ def _ic_panel(evaluation: Evaluation, left: float, top: float, width: float) -> 
     plot_top, plot_bottom = top + 40, top + 250
     plot_left, plot_right = left + 44, left + width - 92
     ic = evaluation.ic
-    # A day whose coefficient is undefined has nothing to draw, and the summary
-    # beside the bars already leaves it out of the mean.
-    days = sorted(day for day, value in evaluation.daily_ic.items() if not math.isnan(value))
-    values = [evaluation.daily_ic[day] for day in days]
+    # A day whose coefficient is undefined has nothing to draw, and the mean
+    # beside the bars leaves it out by the same rule.
+    defined = defined_ic(evaluation.daily_ic)
+    days = sorted(defined)
+    values = [defined[day] for day in days]
 
     band = (ic.mean - 2 * ic.standard_error, ic.mean + 2 * ic.standard_error)
-    low = _floor_tenth(min(0.0, *values, band[0]))
-    high = max(_ceil_tenth(max(0.0, *values, band[1])), low + 0.1)
+    low = _tenth(min(0.0, *values, band[0]), math.floor)
+    high = max(_tenth(max(0.0, *values, band[1]), math.ceil), low + 0.1)
 
     def y(value: float) -> float:
         return plot_bottom - (value - low) / (high - low) * (plot_bottom - plot_top)
 
-    parts = [
-        _text(
-            left,
-            top + 14,
-            "Information coefficient by scored day",
-            size=13,
-            fill=_INK,
-            weight="600",
-        ),
-        _text(
-            left,
-            top + 30,
-            f"Rank correlation across each day's issuers, {len(days)} days",
-            size=11,
-            fill=_INK_SECONDARY,
-        ),
-    ]
+    parts = _heading(
+        left,
+        top,
+        "Information coefficient by scored day",
+        f"Rank correlation across each day's issuers, {len(days)} days",
+    )
     for tick in _ticks(low, high, 0.1):
         parts.append(_line(plot_left, y(tick), plot_right, y(tick), _GRID))
         parts.append(
@@ -181,8 +179,8 @@ def _calibration_panel(evaluation: Evaluation, left: float, top: float) -> list[
     # The axes span the realised shares as well as the bands: a thin band at
     # the edge of the forecast range can realise anything from 0 to 1.
     extent = [value for band in bands for value in (band.lower, band.upper, band.realised)]
-    low = _floor_tenth(min(extent))
-    high = _ceil_tenth(max(extent))
+    low = _tenth(min(extent), math.floor)
+    high = _tenth(max(extent), math.ceil)
 
     def x(value: float) -> float:
         return plot_left + (value - low) / (high - low) * size
@@ -190,16 +188,12 @@ def _calibration_panel(evaluation: Evaluation, left: float, top: float) -> list[
     def y(value: float) -> float:
         return plot_bottom - (value - low) / (high - low) * size
 
-    parts = [
-        _text(left, top + 14, "Calibration by forecast band", size=13, fill=_INK, weight="600"),
-        _text(
-            left,
-            top + 30,
-            f"{evaluation.pooled_issuer_days:,} scored issuer-days",
-            size=11,
-            fill=_INK_SECONDARY,
-        ),
-    ]
+    parts = _heading(
+        left,
+        top,
+        "Calibration by forecast band",
+        f"{evaluation.pooled_issuer_days:,} scored issuer-days",
+    )
     for tick in _ticks(low, high, 0.1):
         parts.append(_line(x(tick), plot_top, x(tick), plot_bottom, _GRID))
         parts.append(_line(plot_left, y(tick), plot_right, y(tick), _GRID))
@@ -234,10 +228,6 @@ def _calibration_panel(evaluation: Evaluation, left: float, top: float) -> list[
 
 def render_baseline_figure(evaluation: Evaluation) -> str:
     """Render the daily information coefficient and calibration as one SVG."""
-    body: Sequence[str] = [
-        *_ic_panel(evaluation, left=24, top=20, width=560),
-        *_calibration_panel(evaluation, left=604, top=20),
-    ]
     ic = evaluation.ic
     summary = (
         f"Mean information coefficient {ic.mean:+.4f} (t = {ic.t_statistic:+.2f}) over "
@@ -252,7 +242,8 @@ def render_baseline_figure(evaluation: Evaluation) -> str:
             f"<desc>{escape(summary)}</desc>",
             f'<rect x="0.5" y="0.5" width="{_WIDTH - 1}" height="{_HEIGHT - 1}" rx="8" '
             f'fill="{_SURFACE}" stroke="{_BORDER}"/>',
-            *body,
+            *_ic_panel(evaluation, left=24, top=20, width=560),
+            *_calibration_panel(evaluation, left=604, top=20),
             "</svg>",
             "",
         ]

@@ -16,7 +16,7 @@ from datetime import date
 
 import pytest
 
-from arbiter.arms.evaluate import DayOfEvents, evaluate_baseline, split_days
+from arbiter.arms.evaluate import DayOfEvents, _rose, evaluate_baseline, split_days
 from arbiter.arms.features import FEATURE_NAMES
 from arbiter.evaluation.metrics import InsufficientObservationsError
 
@@ -308,3 +308,8 @@ def test_a_scored_day_on_which_nothing_resolved_still_reports_its_unlabelled_eve
     evaluation = evaluate_baseline(days, embargo_sessions=0)
 
     assert evaluation.test_events_unlabelled == 5
+
+
+def test_an_issuer_day_with_no_abnormal_return_did_not_rise():
+    """The outcome is whether the stock beat its benchmark; matching it is not a rise."""
+    assert _rose([0.0, 0.01, -0.01]) == [0, 1, 0]

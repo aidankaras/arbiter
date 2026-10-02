@@ -5,7 +5,6 @@ plain rows, and what the resolver needs is a typed request carrying the horizon
 its domain implies.
 """
 
-import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -15,6 +14,7 @@ import pytest
 from arbiter.evaluation.resolution import HORIZONS, requests_from_rows
 from arbiter.events.redflags import RedFlagEvent
 from arbiter.ingestion.market import Bar
+from arbiter.ingestion.store import read_unpriceable
 
 
 def _row(accession: str, ticker: str = "MO", day: int = 3) -> dict[str, object]:
@@ -116,9 +116,9 @@ def test_a_day_with_no_resolvable_events_still_records_a_partition(tmp_path: Pat
     assert read_events(tmp_path, "labels-insider", date(2026, 8, 28)) == []
 
 
-def _unpriceable(root: Path, domain: str, day: date) -> list[dict[str, str]]:
-    record = root / "unpriceable" / "labeling" / domain / f"{day.isoformat()}.json"
-    return json.loads(record.read_text(encoding="utf-8"))
+def _unpriceable(root: Path, domain: str, day: date) -> list[dict[str, str]] | None:
+    """`None` when no record was written, so an assertion of `== []` cannot pass on absence."""
+    return read_unpriceable(root, domain, day, stage="labeling")
 
 
 def test_a_processed_day_records_what_it_could_not_price(tmp_path: Path):
