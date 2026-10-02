@@ -131,6 +131,11 @@ def write_events(events: Sequence[BaseModel], root: Path, domain: str, day: date
     return path
 
 
+def _unpriceable_path(root: Path, domain: str, day: date, stage: str) -> Path:
+    """Return where one stage records a day's exclusions."""
+    return root / "unpriceable" / stage / domain / f"{day.isoformat()}.json"
+
+
 def write_unpriceable(
     records: Sequence[Mapping[str, str]], root: Path, domain: str, day: date, stage: str
 ) -> Path:
@@ -150,7 +155,7 @@ def write_unpriceable(
     Written for every processed day, including days with nothing to report, for
     the same reason an empty partition is still written.
     """
-    path = root / "unpriceable" / stage / domain / f"{day.isoformat()}.json"
+    path = _unpriceable_path(root, domain, day, stage)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as handle:
@@ -173,7 +178,7 @@ def read_unpriceable(
     empty records: a stage that ran and excluded nothing is not a stage that
     never ran.
     """
-    path = root / "unpriceable" / stage / domain / f"{day.isoformat()}.json"
+    path = _unpriceable_path(root, domain, day, stage)
     if not path.exists():
         return None
     records: list[dict[str, str]] = json.loads(path.read_text(encoding="utf-8"))

@@ -95,6 +95,16 @@ class ICSummary:
         return abs(self.t_statistic) >= 2.0
 
 
+def defined_ic[Key](daily: Mapping[Key, float]) -> dict[Key, float]:
+    """Return the days whose coefficient is defined.
+
+    A day where every forecast or every outcome tied has no ranking to score.
+    Such days are excluded rather than counted as zero, here and anywhere the
+    daily values are summarised or drawn, so the two cannot disagree.
+    """
+    return {key: value for key, value in daily.items() if not math.isnan(value)}
+
+
 def summarise_ic[Key](daily: Mapping[Key, float], observations: int) -> ICSummary:
     """Average per-day information coefficients and report the uncertainty.
 
@@ -106,7 +116,7 @@ def summarise_ic[Key](daily: Mapping[Key, float], observations: int) -> ICSummar
         InsufficientObservationsError: fewer than two days carry a defined
             coefficient, so no spread can be estimated.
     """
-    values = [value for value in daily.values() if not math.isnan(value)]
+    values = list(defined_ic(daily).values())
     if len(values) < 2:
         msg = f"an average across days needs at least two days, got {len(values)}"
         raise InsufficientObservationsError(msg)
