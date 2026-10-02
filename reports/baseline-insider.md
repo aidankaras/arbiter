@@ -8,20 +8,22 @@ Generated 2026-10-01 from the event store.
 
 ## Result
 
-**A positive information coefficient of +0.1209** (standard error 0.0391, t = +3.09) across 11 days. This clears the conventional two-standard-error threshold, which is a weak bar: it is one test on one sample, and the estimate should be expected to shrink as more days are added. The stated probabilities are worth no more than forecasting the base rate of 42.9% for every event: a Brier skill of -0.0003 is indistinguishable from it. The forecasts run high by 0.019 across the reliability bands below, weighted by the events in each, on balance, with 1 of 3 bands running the other way.
+**A positive information coefficient of +0.1209** (standard error 0.0391, t = +3.09) across 11 days. This clears the conventional two-standard-error threshold, which is a weak bar: it is one test on one sample, and the estimate should be expected to shrink as more days are added. The stated probabilities are worth no more than forecasting the fitting period's rate of 45.6% for every issuer-day: a Brier skill of +0.0027 is indistinguishable from it. Against the scored period's own rate of 42.9%, which was not knowable in advance, the Brier skill is -0.0003. The forecasts run high by 0.019 across the reliability bands below, weighted by the issuer-days in each, on balance, with 1 of 3 bands running the other way.
 
 ## What this rests on
 
 | | |
 |---|---|
 | Fitted on | 17 days, 2,988 events |
-| Scored on | 11 days, 1,318 events |
+| Scored on | 11 days, 1,318 labelled events; 37 more could not be priced and are recorded as exclusions |
 | Days contributing a rank correlation | 11 of 11 |
 | Scored observations | 592 issuer-days |
 | Fitting period | 2026-03-02 to 2026-06-02 |
 | Scoring period | 2026-06-12 to 2026-08-11 |
-| Base rate | 42.9% of events had a positive abnormal return |
-| Brier skill | -0.0003 against forecasting the base rate |
+| Up-rate, fitting period | 45.6% of issuer-days had a positive abnormal return |
+| Up-rate, scoring period | 42.9% of issuer-days |
+| Brier skill | +0.0027 against forecasting the fitting period's rate |
+| Brier skill, hindsight reference | -0.0003 against forecasting the scoring period's own rate, not knowable in advance |
 
 The split is chronological: every scored day falls after every fitted day.
 Withheld from both sides: 2026-06-08. Fitted outcomes were still open on
@@ -53,8 +55,10 @@ at one company on one day resolve to a single outcome.
 
 Whether a stated probability means what it says. A well-calibrated forecast
 has the realised column tracking the forecast column down the table.
+Pooled over all 592 scored issuer-days, including
+any on days with too few issuers to rank.
 
-| Forecast band | Mean forecast | Realised | Events | |
+| Forecast band | Mean forecast | Realised | Issuer-days | |
 |---|---|---|---|---|
 | 0.3 to 0.4 | 0.371 | 0.377 | 61 | `█████████···············` |
 | 0.4 to 0.5 | 0.442 | 0.422 | 445 | `██████████··············` |

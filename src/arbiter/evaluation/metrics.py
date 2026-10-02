@@ -163,16 +163,26 @@ def brier_score(probabilities: Sequence[float], outcomes: Sequence[int]) -> floa
     return float(np.mean((predicted - realised) ** 2))
 
 
-def brier_skill_score(probabilities: Sequence[float], outcomes: Sequence[int]) -> float:
-    """Return the Brier score's improvement over forecasting the base rate.
+def brier_skill_score(
+    probabilities: Sequence[float],
+    outcomes: Sequence[int],
+    reference_rate: float | None = None,
+) -> float:
+    """Return the Brier score's improvement over forecasting a constant rate.
 
-    Zero means the forecast is worth exactly as much as knowing how often the
-    outcome happens; negative means it is worse than that. This is the form
+    Zero means the forecast is worth exactly as much as forecasting that rate
+    for every outcome; negative means it is worse than that. This is the form
     worth reporting, because a Brier score alone looks impressive whenever the
     base rate is far from a half.
+
+    `reference_rate` is the constant compared against. Left out, it is the
+    rate realised in `outcomes` themselves, which no forecaster could have
+    known in advance — a stricter reference than any feasible constant. A
+    rate fixed before the outcomes, such as the training period's, is the
+    comparison a forecaster could actually have made.
     """
     realised = np.asarray(outcomes, dtype=float)
-    base_rate = float(realised.mean())
+    base_rate = float(realised.mean()) if reference_rate is None else reference_rate
     reference = float(np.mean((base_rate - realised) ** 2))
     if reference == 0:
         return math.nan

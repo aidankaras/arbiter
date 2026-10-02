@@ -35,13 +35,17 @@ def _evaluation(
             CalibrationBin(lower=0.5, upper=0.6, forecast=0.55, realised=0.57, count=700),
         ],
         brier_skill=0.0012,
+        brier_skill_scored_rate=0.0009,
+        fitted_base_rate=0.492,
         base_rate=0.486,
         train_days=[date(2026, 3, 2), date(2026, 6, 1)],
         test_days=[date(2026, 6, 8), date(2026, 8, 11)],
         embargoed_days=embargoed or [],
         train_events=9000,
         test_events=6000,
+        test_events_unlabelled=0,
         test_issuer_days=3400,
+        pooled_issuer_days=3400,
         coefficients={"is_purchase": 0.21, "is_10b5_1": -0.08, "is_sale": -0.19},
     )
 
@@ -171,7 +175,7 @@ def test_a_forecast_worse_than_the_base_rate_is_said_so_in_the_verdict():
     rendered = render_baseline_report(worse, GENERATED)
     verdict = rendered.split("## What this rests on")[0]
 
-    assert "less useful than forecasting the base rate" in verdict
+    assert "less useful than forecasting the fitting period's rate of 49.2%" in verdict
     assert "-0.2224" in verdict
 
 
@@ -276,3 +280,35 @@ def test_bands_that_genuinely_disagree_are_reported_as_dispersion():
 
     assert "disagree in direction" in verdict
     assert "dispersion rather than a shift" in verdict
+
+
+def test_the_verdict_states_skill_against_both_references():
+    """The feasible reference leads; the hindsight one is named as such."""
+    rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
+    verdict = rendered.split("## What this rests on")[0]
+
+    assert "fitting period's rate of 49.2%" in verdict
+    assert "scored period's own rate of 48.6%, which was not knowable in advance" in verdict
+    assert "+0.0009" in verdict
+
+
+def test_unpriced_events_on_scored_days_are_reported_when_there_are_any():
+    evaluation = _evaluation(0.004, 0.011, 0.36)
+
+    with_gaps = render_baseline_report(
+        replace(evaluation, test_events_unlabelled=37), GENERATED
+    )
+    without = render_baseline_report(evaluation, GENERATED)
+
+    assert "6,000 labelled events; 37 more could not be priced" in with_gaps
+    assert "could not be priced" not in without
+
+
+def test_the_calibration_table_states_the_count_it_sums_to():
+    evaluation = replace(_evaluation(0.004, 0.011, 0.36), pooled_issuer_days=1600)
+
+    rendered = render_baseline_report(evaluation, GENERATED)
+    calibration = rendered.split("## Calibration")[1].split("## Fitted weights")[0]
+
+    assert "Pooled over all 1,600 scored issuer-days" in calibration
+    assert sum(band.count for band in evaluation.calibration) == 1600

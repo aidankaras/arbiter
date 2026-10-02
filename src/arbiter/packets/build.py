@@ -29,7 +29,7 @@ which of those facts matters.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from itertools import pairwise
 from typing import Any
 
@@ -54,6 +54,18 @@ _VOLUME_SESSIONS = 63
 
 #: Sessions in a trading year, for annualising a daily standard deviation.
 _SESSIONS_PER_YEAR = 252
+
+
+class UnusablePriceError(ValueError):
+    """Raised when a price series carries a close that is not a price.
+
+    A zero or negative close is bad data, not thin data, and is
+    refused rather than summarised. Reported as `None` it would be
+    indistinguishable from a short history, and vendor defects cluster by symbol
+    and by day, so the gap would be correlated with the data. A `ValueError` so
+    the packet pipeline records the event as excluded, with this message as the
+    reason, instead of losing the day.
+    """
 
 
 def to_session_bar(bar: Bar) -> SessionBar:
@@ -84,11 +96,6 @@ def _trailing_return(bars: Sequence[SessionBar]) -> Decimal | None:
     if len(bars) < _TRAILING_SESSIONS + 1:
         return None
     start = bars[-(_TRAILING_SESSIONS + 1)].close
-    if start <= 0:
-        # A non-positive close is not a price. Returning None reports that the
-        # statistic could not be computed, rather than dividing and reporting a
-        # number whose sign is meaningless.
-        return None
     return (bars[-1].close - start) / start
 
 
@@ -103,14 +110,7 @@ def _realised_volatility(bars: Sequence[SessionBar]) -> Decimal | None:
         return None
 
     window = bars[-(_TRAILING_SESSIONS + 1) :]
-    returns: list[Decimal] = []
-    for earlier, later in pairwise(window):
-        if earlier.close <= 0 or later.close <= 0:
-            return None
-        try:
-            returns.append((later.close / earlier.close).ln())
-        except InvalidOperation:
-            return None
+    returns = [(later.close / earlier.close).ln() for earlier, later in pairwise(window)]
 
     mean = sum(returns) / Decimal(len(returns))
     # Sample variance: the window is a sample of the return process, not the
@@ -120,28 +120,43 @@ def _realised_volatility(bars: Sequence[SessionBar]) -> Decimal | None:
 
 
 def _volume_percentile(bars: Sequence[SessionBar]) -> Decimal | None:
-    """Where the latest session's volume ranks in the trailing window.
+    """Where the latest session's volume ranks among the sessions before it.
 
-    Reported as the fraction of the window at or below the latest volume, so 1
-    means the heaviest session in the window and 0.5 the median. `None` when the
-    window is too short to rank against.
+    The mid-rank: sessions below count fully and ties count half, against the
+    window excluding the latest session itself. 1 means heavier than every
+    earlier session, 0 lighter than all of them, and 0.5 the median — including
+    a flat series. Counting ties as at-or-below would place an illiquid issuer
+    trading its usual volume near the top of its window, and tie frequency rises
+    as liquidity falls, so the bias would concentrate in small caps. `None` when
+    the window is too short to rank against.
     """
     if len(bars) < _VOLUME_SESSIONS:
         return None
-    window = [bar.volume for bar in bars[-_VOLUME_SESSIONS:]]
-    latest = window[-1]
-    at_or_below = sum(1 for volume in window if volume <= latest)
-    return Decimal(at_or_below) / Decimal(len(window))
+    *earlier, latest = (bar.volume for bar in bars[-_VOLUME_SESSIONS:])
+    below = sum(1 for volume in earlier if volume < latest)
+    ties = sum(1 for volume in earlier if volume == latest)
+    return (Decimal(below) + Decimal(ties) / 2) / Decimal(len(earlier))
 
 
 def market_summary(bars: Sequence[SessionBar]) -> MarketSummary:
     """Describe a price series in a few figures a reader can verify.
 
-    Every statistic is `None` when its window is too short. That is the whole
-    reason they are optional: a zero trailing return asserts the stock did not
-    move, and filling a missing one with zero would put that assertion into the
-    evidence of every event near the start of a price history.
+    Every statistic is `None` when its window is too short, and only then. That
+    is the whole reason they are optional: a zero trailing return asserts the
+    stock did not move, and filling a missing one with zero would put that
+    assertion into the evidence of every event near the start of a price history.
+
+    Raises:
+        UnusablePriceError: a close in the series is zero or negative. Every
+            bar reaches the packet, so the whole series is checked rather than
+            only the sessions a statistic reads. A non-finite close never gets
+            this far: `SessionBar` refuses it on construction.
     """
+    for bar in bars:
+        if bar.close <= 0:
+            msg = f"close of {bar.close} on {bar.session} is not a price"
+            raise UnusablePriceError(msg)
+
     return MarketSummary(
         trailing_return_21d=_trailing_return(bars),
         realised_volatility_21d=_realised_volatility(bars),

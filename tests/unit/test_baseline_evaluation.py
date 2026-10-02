@@ -11,6 +11,7 @@ it.
 """
 
 import random
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -220,3 +221,90 @@ def test_a_filing_repeated_across_rows_weighs_no_more_than_one_issuer_day():
     padded = evaluate_baseline([repeated, *days[1:]], embargo_sessions=0).coefficients
 
     assert padded == pytest.approx(plain, rel=1e-6, abs=1e-9)
+
+
+@pytest.mark.parametrize("fraction", [-0.2, 0.0, 1.0, 1.5])
+def test_a_fraction_outside_the_open_unit_interval_is_refused(fraction: float):
+    """A negative fraction slices from the end and silently fits on most days."""
+    with pytest.raises(ValueError, match="strictly between 0 and 1"):
+        split_days(DAYS, train_fraction=fraction, embargo_sessions=0)
+
+
+def test_calibration_is_pooled_over_every_scored_issuer_day():
+    """A day too thin to rank still has outcomes worth calibrating against.
+
+    The pooled count is stated separately from the ranked sample, and the
+    calibration table must sum to the count stated beside it.
+    """
+    thin = _day(date(2026, 6, 15), informative=True, issuers=4)
+    days = [_day(day, informative=True) for day in DAYS] + [thin]
+
+    evaluation = evaluate_baseline(days, embargo_sessions=0)
+
+    assert thin.day in evaluation.test_days
+    assert thin.day not in evaluation.daily_ic
+    assert evaluation.pooled_issuer_days == evaluation.test_issuer_days + 4
+    assert sum(band.count for band in evaluation.calibration) == evaluation.pooled_issuer_days
+
+
+def test_the_hindsight_reference_is_never_easier_than_the_fitted_one():
+    """The scored period's own rate is the best constant in hindsight.
+
+    Skill against it is therefore strictly below skill against any other
+    constant, such as the fitted period's rate, whatever the forecasts are.
+    """
+    days = [_day(day, informative=False) for day in DAYS]
+
+    evaluation = evaluate_baseline(days, embargo_sessions=0)
+
+    assert evaluation.fitted_base_rate != evaluation.base_rate
+    assert evaluation.brier_skill_scored_rate < evaluation.brier_skill
+
+
+def test_unlabelled_events_on_scored_days_are_counted_and_fitted_ones_are_not():
+    days = [replace(_day(day, informative=True), unlabelled=3) for day in DAYS]
+
+    evaluation = evaluate_baseline(days, embargo_sessions=0)
+
+    assert evaluation.test_events_unlabelled == 3 * len(evaluation.test_days)
+
+
+def test_the_fitted_rate_counts_an_issuer_day_by_the_sign_of_its_mean_return():
+    """The reference must decide "rose" exactly as scoring does.
+
+    Each issuer that rose files a second row with a smaller opposite return. The
+    issuer-day still rose; averaging its rows' signs would count it as half.
+    """
+    days: list[DayOfEvents] = []
+    for day in DAYS:
+        base = _day(day, informative=True)
+        extra = [-value / 5 for value in base.returns if value > 0]
+        positives = [index for index, value in enumerate(base.returns) if value > 0]
+        days.append(
+            DayOfEvents(
+                day=day,
+                features=base.features + [base.features[index] for index in positives],
+                outcomes=base.outcomes + [int(value > 0) for value in extra],
+                returns=base.returns + extra,
+                issuers=base.issuers + [base.issuers[index] for index in positives],
+            )
+        )
+
+    evaluation = evaluate_baseline(days, embargo_sessions=0)
+
+    fitted = [day for day in days if day.day in evaluation.train_days]
+    rose = sum(sum(1 for value in day.returns[:40] if value > 0) for day in fitted)
+    assert evaluation.fitted_base_rate == pytest.approx(rose / (40 * len(fitted)))
+
+
+def test_a_scored_day_on_which_nothing_resolved_still_reports_its_unlabelled_events():
+    """The day most fully lost to exclusions is the one the count exists for."""
+    empty = DayOfEvents(
+        day=date(2026, 6, 19), features=[], outcomes=[], returns=[], issuers=[], unlabelled=5
+    )
+    before = replace(empty, day=date(2026, 5, 29), unlabelled=7)
+    days = [before, *(_day(day, informative=True) for day in DAYS), empty]
+
+    evaluation = evaluate_baseline(days, embargo_sessions=0)
+
+    assert evaluation.test_events_unlabelled == 5

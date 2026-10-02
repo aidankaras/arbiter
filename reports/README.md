@@ -9,7 +9,7 @@ rather than an edit to the old one.
 `baseline-insider.md` — the baseline arm on insider transactions, computed
 2026-10-01 from 29 re-ingested days between March and August 2026. Mean
 information coefficient +0.121 (t = 3.09) over 11 scored days and 592
-issuer-days; Brier skill indistinguishable from forecasting the base rate. One
+issuer-days; Brier skill indistinguishable from forecasting a constant rate. One
 sample and one regime: a measurement of the control, not a strategy.
 
 `withdrawn/baseline-insider-2026-09-19.md` — **withdrawn; no figure in it should

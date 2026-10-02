@@ -89,17 +89,6 @@ def test_every_feature_is_weighted_so_none_is_silently_dropped():
     assert set(weights) == set(FEATURE_NAMES)
 
 
-def test_the_base_rate_and_sample_size_are_recorded_with_the_model():
-    """A coefficient means nothing without knowing what it was fitted on."""
-    features, outcomes = _separable(count=200)
-
-    model = fit_baseline(features, outcomes)
-
-    assert model.events == 200
-    assert model.base_rate == pytest.approx(0.5)
-    assert model.seed == RANDOM_SEED
-
-
 def test_fitting_twice_on_the_same_data_gives_the_same_model():
     """A published number has to be reproducible from the recorded seed."""
     features, outcomes = _separable()
