@@ -24,6 +24,7 @@ from arbiter.arms.evaluate import (
 )
 from arbiter.arms.features import UnsupportedDomainError
 from arbiter.config import Settings, get_settings
+from arbiter.evaluation.figure import render_baseline_figure
 from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.resolution import HORIZONS, resolve_stored_day
 from arbiter.ingestion.backfill import backfill as run_backfill
@@ -221,12 +222,14 @@ def report(
         typer.echo(f"refusing to score a day whose labels are stale: {exc}", err=True)
         raise typer.Exit(code=1) from None
 
+    # Both are rendered before either is written, so a failure in one cannot
+    # leave a new report beside a figure from an earlier run.
+    report_text = render_baseline_report(evaluation, generated_on=current_session_date())
+    figure = render_baseline_figure(evaluation)
     destination = Path(out) / f"baseline-{domain}.md"
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(
-        render_baseline_report(evaluation, generated_on=current_session_date()),
-        encoding="utf-8",
-    )
+    destination.write_text(report_text, encoding="utf-8")
+    destination.with_suffix(".svg").write_text(figure, encoding="utf-8")
 
     typer.echo(
         f"{destination}: IC {evaluation.ic.mean:+.4f} "

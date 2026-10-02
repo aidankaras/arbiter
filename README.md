@@ -4,122 +4,65 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](pyproject.toml)
 
-Event-driven equity forecasting from SEC filings, built to answer a question that
-most applied-LLM systems leave unmeasured: **does an LLM agent actually beat a
-conventional model when both are given exactly the same information?**
+**Does an LLM agent beat a conventional model at forecasting equity moves from SEC
+filings, when both see exactly the same information?** Arbiter is built to
+measure that. It freezes each filing into an immutable, content-hashed evidence
+packet stamped with the filing's acceptance time, so that every forecasting
+approach can be scored on byte-identical inputs.
 
-Arbiter ingests SEC filings daily and freezes each event into an immutable
-point-in-time evidence packet. Four independent forecasting approaches will then
-score that identical packet, each tracked as a shadow paper portfolio with full
-decision provenance and per-decision cost accounting.
+## Current result
 
-> **Status: the measurement pipeline and the conventional arm are built; the
-> three language-model arms are not.**
->
-> Working today: EDGAR ingestion for Form 4 and 8-K, event extraction for the
-> insider and red-flag domains, a date-partitioned event store, market data,
-> abnormal-return labels, a resumable historical backfill, content-hashed
-> evidence packets with point-in-time enforcement, the baseline forecasting arm,
-> out-of-sample evaluation by information coefficient and calibration, an
-> append-only ledger, and spend metering.
->
-> Designed but not built: comparable retrieval, the three language-model arms,
-> the dashboard, and the paper portfolios. Sections describing those use the
-> future tense; anything in the present tense refers to code in this repository.
-> Paper trading only, always.
->
-> **Current measurement: the baseline arm on insider transactions.** Mean
-> information coefficient +0.121 (t = 3.09) over 11 out-of-sample days and 592
-> issuer-days, with calibration no better than forecasting the base rate. One
-> sample from one regime; see [`reports/baseline-insider.md`](reports/baseline-insider.md).
-> An earlier result was withdrawn after duplicated rows were found in the event
-> store; [`reports/withdrawn/`](reports/withdrawn/) keeps it and the reason.
+The conventional arm, measured on insider transactions:
+
+![Daily information coefficient and calibration of the baseline arm](reports/baseline-insider.svg)
+
+- **Mean information coefficient +0.121 (t = 3.09)** over 11 out-of-sample days
+  and 592 issuer-days, scored strictly after the 17 days it was fitted on.
+- **Calibration no better than a constant.** Brier skill is +0.003 against
+  forecasting the fitting period's up-rate, inside the noise.
+- One sample from one regime: a measurement of the control, not a strategy. Full
+  report: [`reports/baseline-insider.md`](reports/baseline-insider.md).
+
+An earlier result was withdrawn after duplicated rows were found in the event
+store; [`reports/withdrawn/`](reports/withdrawn/) keeps it and the reason.
+
+## What is built
+
+| Component | Status |
+|---|---|
+| EDGAR ingestion (Form 4, 8-K) and event extraction | Built |
+| Market data and five-session abnormal-return labels | Built |
+| Resumable historical backfill | Built |
+| Content-hashed evidence packets with point-in-time enforcement | Built |
+| Baseline arm (logistic regression) and out-of-sample evaluation | Built |
+| Append-only prediction ledger and spend metering | Built |
+| Comparable retrieval | Not built |
+| Neural, agent and arbiter arms | Not built |
+| Shadow portfolios and dashboard | Not built |
+| Earnings strategy (XBRL) | Not built |
+
+The agent arm is next. Sections below describing unbuilt parts use the future
+tense; anything in the present tense refers to code in this repository. Paper
+trading only, always.
 
 ## Quickstart
 
 ```bash
 git clone https://github.com/aidankaras/arbiter && cd arbiter
 uv sync --all-extras
-cp .env.example .env          # set SEC_USER_AGENT: "identifier your@email"
-uv run arbiter ingest 2026-08-10
-```
-
-```
-insider: 755
-redflag: 46
-rejected: 0
-unpriceable: 34
-```
-
-That command fetches every Form 4 and 8-K accepted on the given day, extracts the
-qualifying events, and writes them to `data/events/{domain}/{date}.parquet`.
-Re-running a date replaces that date's partition, so a failed run is repeated
-rather than repaired.
-
-The last two counts are different facts and are recorded separately. `rejected`
-is filings that could not be parsed, which is a defect to investigate; a day
-where too many fail is refused outright rather than recorded, on the reasoning
-that a format change has broken it. `unpriceable` is filings parsed correctly
-whose issuer has no listed common stock — insiders at companies with only
-registered debt file Form 4 like anyone else — which is an ordinary property of
-the population and is excluded from that share.
-
-Once an event's outcome window has closed, the same day is labeled:
-
-```bash
-uv run arbiter resolve 2026-08-10 insider
-uv run arbiter resolve 2026-08-10 redflag
-```
-
-```
-labels-insider: 751
-labels-redflag: 40
-```
-
-Labeling lags ingestion. The horizon is five sessions for insider events and
-twenty for red flags, and the consolidated tape will not serve a window ending
-on the current session — so a day becomes measurable only after its window has
-closed, and a day asked for too early yields nothing rather than a partial
-measurement. Issuers with no listed common stock are recorded under
-`unpriceable/` beside the labels, so a thin day stays distinguishable from a day
-whose filers were unlistable.
-
-Market data additionally requires `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`;
-EDGAR ingestion needs no credentials beyond the contact string the SEC requires.
-
-### Building a history and measuring against it
-
-One day proves the pipeline runs. Measuring anything needs a history:
-
-```bash
+cp .env.example .env                        # SEC_USER_AGENT, plus Alpaca keys for prices
+uv run arbiter ingest 2026-08-10            # one day of filings -> events
+uv run arbiter resolve 2026-08-10 insider   # once the outcome window has closed
 uv run arbiter backfill 2026-03-02 2026-08-14 --every 4
-uv run arbiter report --domain insider
+uv run arbiter report --domain insider      # fit, score, write reports/
 ```
 
-`backfill` ingests and labels a range of trading days, writing its progress as
-it goes. Days already stored are skipped, so an interrupted run is restarted
-rather than repaired.
-
-`--every` is the lever on how long a run takes. A day costs the same regardless
-of how many of its filings qualify, because each filing must be fetched to find
-out and the acceptance timestamp that makes an event point-in-time is not
-carried in EDGAR's bulk index. Volume varies roughly fourfold across the year —
-736 Form 4 filings on one sampled day against 3,001 in early March, when annual
-grants and vesting cluster — so a day takes between three and fourteen minutes.
-Sampling every Nth trading day spreads observations across months at the cost of
-a contiguous block, which matters because events filed on one day share a market
-factor the sector benchmark only partly removes.
-
-`report` fits the baseline arm on the earlier fraction of the stored days and
-scores it on the rest, writing the result to [`reports/`](reports/). The split
-is chronological, never random: a random split would place events from one day
-on both sides and report as skill what is partly memory.
-
----
+[`docs/running-the-pipeline.md`](docs/running-the-pipeline.md) explains what each
+command records and why.
 
 ## The four arms
 
-Each event is scored by four approaches that see byte-identical inputs:
+Each event will be scored by four approaches that see byte-identical inputs. One is built:
 
 | Arm | Approach | Sees text | Uses an LLM | Built |
 |---|---|---|---|---|
@@ -140,8 +83,8 @@ it were one measurement.
 
 The `arbiter` arm is a fourth prediction, not a gate. It never vetoes the other
 arms, because an arm whose live record has been filtered by another model is no
-longer comparable to anything. All four maintain shadow portfolios; only the
-arbiter's book is mirrored to the paper brokerage account.
+longer comparable to anything. All four will maintain shadow portfolios; only
+the arbiter's book will be mirrored to the paper brokerage account.
 
 ## Why the evidence packet is the center of the design
 
@@ -149,19 +92,23 @@ A comparison between approaches is only meaningful if the approaches saw the sam
 thing. Arbiter enforces that structurally rather than by convention.
 
 Each event produces exactly one **evidence packet**: an immutable, content-hashed
-object stamped with the filing's EDGAR acceptance time. It contains the filing
-text, issuer metadata, market context truncated at that timestamp, and
-comparable historical cases restricted to those that had already resolved.
+object stamped with the filing's EDGAR acceptance time. It contains the
+extracted filing, issuer metadata, and market context truncated at that
+timestamp; once retrieval is built it will also carry comparable historical
+cases, restricted to those that had already resolved.
 
-Downstream of the packet, nothing fetches. The agent analyst, once built, is
-constructed with an empty tool list, so it cannot look anything up. Every prediction
-records the hash of the packet it was made from, which makes any published result
-reproducible and any silent change to packet construction detectable.
+Downstream of the packet, nothing will fetch. The agent analyst, once built, is
+constructed with an empty tool list, so it cannot look anything up. The
+prediction ledger requires the hash of the packet each forecast was made from,
+which will make any published result reproducible and any silent change to
+packet construction detectable. The baseline arm predates the packets: it reads
+the same filing fields from the event store and writes no ledger rows, and it
+moves onto packets alongside the first language-model arm.
 
-This also closes the most common source of invalid results in event-study work:
-retrieving a "similar past case" whose outcome had not yet occurred at the time
-of the event being predicted. Comparable lookups carry the event's own timestamp
-and filter on it in the query itself.
+Restricting comparables by time closes the most common source of invalid
+results in event-study work: retrieving a "similar past case" whose outcome had
+not yet occurred at the time of the event being predicted. Comparable lookups
+will carry the event's own timestamp and filter on it in the query itself.
 
 ## Strategies
 
@@ -188,12 +135,13 @@ the signal lives in prose and disappear where it lives in a table.
 
 The primary target is five-trading-day abnormal return against a sector ETF,
 entered at the first open after the filing's acceptance timestamp. Every arm
-emits both a point estimate and a class distribution, so calibration is
-measurable for the non-LLM arms too.
+emits a probability that the return is positive, so calibration is measurable
+for every arm, not only the language models.
 
-Reported per arm and per strategy: information coefficient, directional accuracy,
-reliability curves, Brier score, shadow portfolio performance with modeled costs,
-cost per decision, and pairwise disagreement with conditional accuracy.
+Reported today: the information coefficient by day, a reliability table, and
+Brier skill. Planned with the other arms: directional accuracy, shadow portfolio
+performance with modelled costs, cost per decision, and pairwise disagreement
+with conditional accuracy.
 
 **Backtest and forward results are reported separately and labeled everywhere.**
 The LLM arms were trained on data covering the backtest period, so backtested
@@ -202,6 +150,9 @@ in five trading days, genuine out-of-sample evidence accumulates continuously, a
 the gap between backtest and forward performance is itself a measured result.
 
 ## Architecture
+
+The target design. Ingestion, event detection, packets, the baseline arm, label
+resolution and evaluation exist today; the rest is planned.
 
 ```
 ingestion (no LLM) → event detection (no LLM) → evidence packet (immutable, hashed)
@@ -219,9 +170,9 @@ ingestion (no LLM) → event detection (no LLM) → evidence packet (immutable, 
                                         dashboard + weekly research report
 ```
 
-Language models are confined to extraction and judgment. Position sizing and
-order placement are deterministic code, so no model output reaches the broker
-without passing through explicit risk limits.
+Language models will be confined to extraction and judgment. Position sizing
+and order placement will be deterministic code, so no model output can reach the
+broker without passing through explicit risk limits.
 
 ## Stack
 
@@ -240,6 +191,7 @@ neural arm, and FastAPI for the dashboard.
 | Document | Contents |
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | Component boundaries and data flow |
+| [`docs/running-the-pipeline.md`](docs/running-the-pipeline.md) | What each command does and records |
 | [`docs/methodology.md`](docs/methodology.md) | Leakage controls, labeling, evaluation design |
 | [`docs/code-standards.md`](docs/code-standards.md) | Engineering standards for this repository |
 | [`docs/data-provenance.md`](docs/data-provenance.md) | Sources, licensing terms, and what is redistributed |
@@ -247,23 +199,6 @@ neural arm, and FastAPI for the dashboard.
 | [`docs/strategies/`](docs/strategies/) | Per-strategy event definitions and features |
 | [`docs/lessons/`](docs/lessons/) | Concept notes covering the design decisions behind each subsystem |
 | [`reports/`](reports/) | Measurements, each committed with the code that produced it |
-
-## Roadmap
-
-- [x] Repository scaffold, CI, and engineering standards
-- [x] Append-only ledger, usage metering, and spend ceilings
-- [x] EDGAR ingestion: Form 4 and 8-K parsing, event extraction, Parquet store
-- [x] Market data and abnormal-return labels
-- [ ] XBRL facts and the earnings strategy
-- [x] Evidence packet builder with timestamp enforcement and hashing
-- [x] Baseline arm and evaluation harness
-- [ ] Neural arm
-- [ ] Public dashboard and shadow portfolios
-- [ ] Agent arm
-- [ ] Arbiter arm and disagreement analytics
-- [ ] Automated weekly report and benchmark regression gate
-- [ ] Distilled extraction model
-- [ ] Methodology writeup
 
 ## Disclaimer
 

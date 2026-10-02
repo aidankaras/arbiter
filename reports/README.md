@@ -12,6 +12,11 @@ information coefficient +0.121 (t = 3.09) over 11 scored days and 592
 issuer-days; Brier skill indistinguishable from forecasting a constant rate. One
 sample and one regime: a measurement of the control, not a strategy.
 
+`baseline-insider.svg` — the same evaluation drawn as a figure: the information
+coefficient by scored day with its mean and two-standard-error band, and the
+calibration bands against the diagonal. Written by `arbiter report` beside the
+Markdown report, so the two cannot disagree.
+
 `withdrawn/baseline-insider-2026-09-19.md` — **withdrawn; no figure in it should
 be cited.** The event store it was computed from held duplicated rows, from two
 separate causes. A filing's single qualifying transaction had been stored once

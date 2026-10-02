@@ -12,7 +12,7 @@ harder to reproduce or compare, it is the wrong change regardless of how much it
 improves the code.
 
 Read [`docs/methodology.md`](docs/methodology.md) before touching anything in
-`packets/`, `retrieval/`, or `evaluation/`.
+`packets/`, `arms/` or `evaluation/`, and before building comparable retrieval.
 
 ## Non-negotiables
 
@@ -54,55 +54,27 @@ Concretely:
 - Commit messages read as engineering history: what changed and why, in the
   imperative mood.
 
-## Reporting standards for anyone dispatching or reviewing work here
+## Verification standards
 
-Most of these describe one failure: **a check that passes without having run.** The
-test for whether a rule belongs here is to ask what the check would print if it had
-never happened. If that is the same thing it prints on success, it belongs, because
-nothing downstream can tell the two apart.
+Most of these guard against one failure: a check that passes without having run.
+If a check would print the same thing whether or not it happened, verify it.
 
-- **A claimed test count is verified, not trusted.** Run `uv run pytest tests/unit -q`
-  and read the tail line before treating any "N passed" as done. A report is the only
-  evidence a reviewer has unless they rerun the suite themselves, and this project has
-  already had an error message mistaken for a clean exit when it was the tail of a
-  traceback.
-- **A pinned Action SHA is verified against the source**, never copied from a plan or
+- **Verify a claimed test count.** Run `uv run pytest tests/unit -q` and read the
+  tail line before treating any "N passed" as done.
+- **Verify a pinned Action SHA against its source**, never copy it from a plan or
   another repository: `gh api repos/<org>/<repo>/git/ref/tags/<tag> --jq .object.sha`.
-- **A mutation test clears `__pycache__` before it runs.** CPython decides a cached
-  module is current from the source's size and its modification time truncated to whole
-  seconds, so a mutation that preserves the byte count and is tested within a second of
-  being written executes the *previous* bytecode. The suite passes, and that outcome is
-  indistinguishable from a mutation the tests genuinely failed to catch. Flipping one
-  digit for another, or `<` for `>`, is size-preserving, which makes the sharpest
-  mutations the ones most likely to be reported wrongly:
-
-  Use `scripts/mutate.sh <file> "<old>" "<new>" "<label>"`, which clears the
-  cache, refuses a mutant that does not parse, and verifies the file was
-  restored. Each of those guards exists because its absence once produced a
-  result table that looked entirely normal and meant nothing.
-- **A comment explaining *why* is a second claim, and the tests do not check it.**
-  A passing suite confirms the conclusion and says nothing about the reason given for
-  it, so an explanation can be wrong in a file that is entirely correct — and it is
-  read by the next person as though it had been verified. This has already happened
-  here: a docstring justified hashing the packet in Python mode on the grounds that
-  JSON mode "would turn every price into a float", which is false. JSON mode renders a
-  `Decimal` to a string and loses no precision. The decision was right for a different
-  reason — it renders before the canonical form can normalise, so `1.50` and `1.5`
-  become two identities — and the stated reason would have taught a reader something
-  untrue about the serialiser. When a comment explains a mechanism, check the
-  mechanism.
-- **A review question is scoped to the unit you were thinking about**, and the
-  defects that survive review live at the seams between units. Both defects that
-  withdrew the first baseline result were found by the `pr-review-toolkit`
-  specialists rather than by the detailed, project-specific prompts written for
-  them — and one of those prompts asked about packet identity explicitly. It
-  could not reach a hash that depended on which *other* events shared the day,
-  because every field was hashed; the leak was in how one was derived. After
-  writing a review question, name the unit it covers and look one seam outward:
-  the caller, the level below, the empty input, the neighbour sharing state.
-- **Design reasoning that belongs to the system goes in `docs/`.** Methodology,
-  architecture and the reasons behind a structural choice are documented there, next
-  to the code they constrain, rather than in commit messages or pull requests alone.
+- **Run mutations with `scripts/mutate.sh <file> "<old>" "<new>" "<label>"`.** It
+  clears `__pycache__` first: CPython treats cached bytecode as current when the
+  source's size and whole-second mtime match, so a size-preserving mutation tested
+  within a second runs the previous code and reads as a surviving mutant. It also
+  refuses a mutant that does not parse and verifies the file was restored.
+- **Check the mechanism behind any comment that explains one.** A passing suite
+  confirms the code's conclusion, not the reason a comment gives for it.
+- **Review one seam outward.** Defects that survive review live between units.
+  After scoping a review question, also check the caller, the level below, the
+  empty input, and any neighbour sharing state.
+- **Put design reasoning in `docs/`**, next to the code it constrains, not only in
+  commit messages or pull requests.
 
 ## Failure modes this codebase has actually hit
 
@@ -158,15 +130,6 @@ pinned. Add a fixture with `tests/fixtures/form4/record.py` whenever a filing
 exhibits a shape the suite does not cover, and name in the test what that shape
 is. A diff in a fixture is a change in the upstream contract and is reviewed as
 one, never refreshed away.
-
-An early mutation audit reported 9 of 22 semantic mutations surviving the suite,
-and that figure is no longer cited because the mutations behind it were never
-written down. It cannot be reproduced, and it was produced without clearing the
-bytecode cache, which biases such a count toward *over*-stating weakness: a
-size-preserving mutation that never took effect leaves the suite green and is
-recorded as one the tests failed to catch. A summary that outlives its evidence
-is an anecdote, whichever direction it errs in — record the mutation list with
-the count, or report neither.
 
 ## Engineering standards
 
