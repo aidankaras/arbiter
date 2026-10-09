@@ -52,3 +52,19 @@ def test_a_small_real_move_survives_quantization():
 
 def test_quantization_keeps_the_sign_of_an_underperforming_return():
     assert _return("100", "98", "50", "51") < 0
+
+
+def test_a_label_does_not_depend_on_the_callers_decimal_context():
+    """Issue #25 for labels: the division reads the ambient context otherwise."""
+    import decimal
+
+    prices = {
+        "entry_price": Decimal("47.13"),
+        "exit_price": Decimal("49.07"),
+        "benchmark_entry": Decimal("71.9"),
+        "benchmark_exit": Decimal("72.31"),
+    }
+    reference = abnormal_return(**prices)
+
+    with decimal.localcontext(decimal.Context(prec=6)):
+        assert abnormal_return(**prices) == reference

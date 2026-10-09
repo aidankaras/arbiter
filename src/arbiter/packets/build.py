@@ -28,6 +28,7 @@ which of those facts matters.
 
 from __future__ import annotations
 
+import decimal
 from collections.abc import Mapping, Sequence
 from decimal import Decimal
 from itertools import pairwise
@@ -35,6 +36,7 @@ from typing import Any
 
 from arbiter.ingestion.market import Bar, closed_bars
 from arbiter.ingestion.timestamps import SEC_TIMEZONE
+from arbiter.numeric import ARITHMETIC, quantized
 from arbiter.packets.schema import (
     EvidencePacket,
     InsiderExtract,
@@ -157,10 +159,21 @@ def market_summary(bars: Sequence[SessionBar]) -> MarketSummary:
             msg = f"close of {bar.close} on {bar.session} is not a price"
             raise UnusablePriceError(msg)
 
+    # Computed under a declared context and quantized, so the packet hash does
+    # not depend on whatever decimal context the caller happened to set (#25).
+    with decimal.localcontext(ARITHMETIC):
+        statistics = (
+            _trailing_return(bars),
+            _realised_volatility(bars),
+            _volume_percentile(bars),
+        )
+    trailing, volatility, percentile = (
+        None if value is None else quantized(value) for value in statistics
+    )
     return MarketSummary(
-        trailing_return_21d=_trailing_return(bars),
-        realised_volatility_21d=_realised_volatility(bars),
-        volume_percentile_63d=_volume_percentile(bars),
+        trailing_return_21d=trailing,
+        realised_volatility_21d=volatility,
+        volume_percentile_63d=percentile,
     )
 
 

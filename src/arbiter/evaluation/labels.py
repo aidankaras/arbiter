@@ -14,11 +14,14 @@ downstream test can detect the difference afterwards.
 
 from __future__ import annotations
 
+import decimal
 from decimal import Decimal
+
+from arbiter.numeric import ARITHMETIC, STATISTIC_QUANTUM, quantized
 
 #: Returns are reported to twelve decimal places, a hundredth of a basis point.
 #: Finer digits come from decimal division rather than from prices.
-RETURN_PRECISION = Decimal("0.000000000001")
+RETURN_PRECISION = STATISTIC_QUANTUM
 
 
 class InsufficientPriceDataError(ValueError):
@@ -78,12 +81,14 @@ def abnormal_return(
             msg = f"{name} is {price}, which no market prints; the event is unresolvable"
             raise InsufficientPriceDataError(msg)
 
-    stock_return = (stock_exit - stock_entry) / stock_entry
-    index_return = (index_exit - index_entry) / index_entry
+    with decimal.localcontext(ARITHMETIC):
+        stock_return = (stock_exit - stock_entry) / stock_entry
+        index_return = (index_exit - index_entry) / index_entry
+        excess = stock_return - index_return
 
     # Quantized deliberately, where the number is computed. Dividing decimals
     # yields as many digits as the arithmetic context allows, and past twelve
     # decimal places those digits describe the division rather than the market:
     # they are below a hundredth of a basis point. Keeping them would push false
     # precision into storage and into every statistic computed downstream.
-    return (stock_return - index_return).quantize(RETURN_PRECISION)
+    return quantized(excess)
