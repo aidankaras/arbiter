@@ -229,3 +229,23 @@ def test_a_thin_day_is_not_judged_against_that_share():
 
     assert labels == []
     assert len(unmeasurable) == 1
+
+
+@pytest.mark.parametrize("bad", ["NaN", "0"])
+def test_an_unusable_price_costs_only_its_own_event(bad: str):
+    """Issue #24: an unusable price raised out of the day, losing every label on it."""
+    good = _series(3, ["100", "100", "101", "102", "103", "104", "110"])
+    broken = _series(3, ["100", "100", "101", "102", "103", "104", bad])
+    benchmark = _series(3, ["50", "50", "50", "50", "50", "50", "52"])
+    fetch, _ = _prices(MO=broken, KO=good, XLP=benchmark)
+
+    labels, unmeasurable = resolve_day(
+        [_request("a-1", ticker="MO"), _request("a-2", ticker="KO")],
+        fetch,
+        benchmark_for=lambda cik: "XLP",
+        today=date(2026, 9, 1),
+    )
+
+    assert [label.accession_no for label in labels] == ["a-2"]
+    assert [record["accession_no"] for record in unmeasurable] == ["a-1"]
+    assert "exit_price" in unmeasurable[0]["reason"]

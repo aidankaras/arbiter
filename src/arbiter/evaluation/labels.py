@@ -55,17 +55,27 @@ def abnormal_return(
     Returns a simple return difference in decimal form, not basis points.
 
     Raises:
-        InsufficientPriceDataError: a price is missing, or an entry price is
-            zero, which would make a return undefined rather than extreme.
+        InsufficientPriceDataError: a price is missing, non-finite, or not
+            positive. A zero entry would make the return undefined; a zero exit
+            would record a total loss no session printed.
     """
     stock_entry = _require(entry_price, "entry_price")
     stock_exit = _require(exit_price, "exit_price")
     index_entry = _require(benchmark_entry, "benchmark_entry")
     index_exit = _require(benchmark_exit, "benchmark_exit")
 
-    for name, price in (("entry_price", stock_entry), ("benchmark_entry", index_entry)):
-        if price == 0:
-            msg = f"{name} is zero, so a return is undefined; the event is unresolvable"
+    # A traded price is finite and positive. The service's JSON admits bare
+    # `NaN` and `Infinity`, and a NaN reaching a label is read downstream as a
+    # non-positive outcome rather than as missing. Finiteness is tested first
+    # because ordering a NaN raises rather than answering.
+    for name, price in (
+        ("entry_price", stock_entry),
+        ("exit_price", stock_exit),
+        ("benchmark_entry", index_entry),
+        ("benchmark_exit", index_exit),
+    ):
+        if not price.is_finite() or price <= 0:
+            msg = f"{name} is {price}, which no market prints; the event is unresolvable"
             raise InsufficientPriceDataError(msg)
 
     stock_return = (stock_exit - stock_entry) / stock_entry

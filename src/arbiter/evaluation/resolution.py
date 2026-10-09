@@ -21,7 +21,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict
 
-from arbiter.evaluation.labels import abnormal_return
+from arbiter.evaluation.labels import InsufficientPriceDataError, abnormal_return
 from arbiter.ingestion.edgar import is_trading_day
 from arbiter.ingestion.market import Bar, tradeable_symbol
 from arbiter.ingestion.timestamps import SEC_TIMEZONE
@@ -485,7 +485,7 @@ def resolve_day(
                     accession_no=event.accession_no,
                 )
             )
-        except UnresolvableEventError as exc:
+        except (UnresolvableEventError, InsufficientPriceDataError) as exc:
             # Recorded rather than dropped. A ripe event that produced no label
             # is a fact about this day, and swallowing it is how a window one
             # session short removed 675 of 675 events from a day while the run
