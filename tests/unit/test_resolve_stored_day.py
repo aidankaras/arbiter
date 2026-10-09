@@ -177,3 +177,96 @@ def test_a_day_that_priced_everything_still_records_an_empty_list(tmp_path: Path
     )
 
     assert _unpriceable(tmp_path, "insider", day) == []
+
+
+def _held_day(
+    tmp_path: Path, as_of_days: list[int], today: date, requested: list[str] | None = None
+) -> None:
+    """Store insider events filed on the given August days, then label as of `today`.
+
+    `requested` collects the symbols the price service was asked for, so a test
+    can show a refusal happened before any request was spent.
+    """
+    from arbiter.evaluation.resolution import resolve_stored_day
+    from arbiter.ingestion.store import write_events
+    from tests.unit.stored_rows import event
+
+    events = [
+        event(f"a-{n}").model_copy(update={"as_of": datetime(2026, 8, n, 20, 47, tzinfo=UTC)})
+        for n in as_of_days
+    ]
+    write_events(events, tmp_path, "insider", date(2026, 8, 3))
+
+    def fetch(symbols, start, end):
+        if requested is not None:
+            requested.extend(symbols)
+        return {symbol: _bars(3, ["10"] * 20) if symbol == "XLP" else [] for symbol in symbols}
+
+    resolve_stored_day(
+        day=date(2026, 8, 3),
+        domain="insider",
+        root=tmp_path,
+        fetch_bars=fetch,
+        benchmark_for=lambda cik: "XLP",
+        today=today,
+    )
+
+
+def test_a_day_with_some_windows_still_open_writes_no_labels(tmp_path: Path):
+    """Issue #32: a partial partition would mark the day stored, and the
+    events still open would never be labelled."""
+    from arbiter.evaluation.resolution import WindowsStillOpenError
+    from arbiter.ingestion.store import partition_exists
+
+    # Filed 3 and 10 August; on 13 August the first window has closed and the
+    # second (entry the 11th, five sessions) has not.
+    with pytest.raises(WindowsStillOpenError, match="1 of 2"):
+        _held_day(tmp_path, as_of_days=[3, 10], today=date(2026, 8, 13))
+
+    assert not partition_exists(tmp_path, "labels-insider", date(2026, 8, 3))
+    assert _unpriceable(tmp_path, "insider", date(2026, 8, 3)) is None
+
+
+def test_a_held_day_names_the_session_after_which_it_can_be_labelled(tmp_path: Path):
+    """The named date is checked by behaviour, not by recounting sessions here:
+    still held on it, labelled on the next session."""
+    from datetime import timedelta
+
+    from arbiter.evaluation.resolution import WindowsStillOpenError
+    from arbiter.ingestion.store import partition_exists
+
+    with pytest.raises(WindowsStillOpenError) as caught:
+        _held_day(tmp_path / "first", as_of_days=[3, 10], today=date(2026, 8, 13))
+    last_close = caught.value.last_close
+    assert last_close.isoformat() in str(caught.value)
+
+    with pytest.raises(WindowsStillOpenError):
+        _held_day(tmp_path / "on", as_of_days=[3, 10], today=last_close)
+
+    _held_day(tmp_path / "after", as_of_days=[3, 10], today=last_close + timedelta(days=1))
+    assert partition_exists(tmp_path / "after", "labels-insider", date(2026, 8, 3))
+
+
+def test_a_held_day_spends_no_price_requests(tmp_path: Path):
+    """Nothing it fetched would be written, so nothing should be fetched."""
+    from arbiter.evaluation.resolution import WindowsStillOpenError
+
+    requested: list[str] = []
+    with pytest.raises(WindowsStillOpenError):
+        _held_day(tmp_path, as_of_days=[3, 10], today=date(2026, 8, 13), requested=requested)
+    assert requested == []
+
+    # Premise: the same recorder does see requests on a day that is labelled.
+    _held_day(
+        tmp_path / "ripe", as_of_days=[3, 10], today=date(2026, 8, 31), requested=requested
+    )
+    assert requested
+
+
+def test_the_same_day_is_labelled_once_every_window_has_closed(tmp_path: Path):
+    """The premise of the three tests above: the fixture is ripe on a later day."""
+    from arbiter.ingestion.store import partition_exists
+
+    _held_day(tmp_path, as_of_days=[3, 10], today=date(2026, 8, 31))
+
+    assert partition_exists(tmp_path, "labels-insider", date(2026, 8, 3))

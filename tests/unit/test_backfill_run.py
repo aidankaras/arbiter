@@ -328,3 +328,72 @@ def test_packets_alone_do_not_make_a_day_stored(tmp_path):
     write_packets([], packets, "insider", DAYS[0])
 
     assert not day_is_packed(root, packets, DAYS[0])
+
+
+def _held_after(*held: int):
+    """A resolve step that holds the given August days, labelling the rest."""
+    from arbiter.evaluation.resolution import WindowsStillOpenError
+
+    def resolve(day: date) -> int:
+        if day.day in held:
+            raise WindowsStillOpenError("redflag", day, 1, 3, last_close=date(2026, 9, 2))
+        return 9
+
+    return resolve
+
+
+def test_a_day_with_windows_still_open_is_pending_not_failed_or_done():
+    """Issue #32: a held day must be neither a failure nor marked finished."""
+    report = backfill(
+        DAYS,
+        ingest=lambda day: _counts(),
+        resolve=_held_after(7),
+        is_stored=lambda day: False,
+    )
+
+    assert report.pending == {date(2026, 8, 7): date(2026, 9, 2)}
+    assert date(2026, 8, 7) not in report.completed
+    assert date(2026, 8, 7) not in report.failed
+    assert len(report.completed) == 4
+
+
+def test_held_days_do_not_count_towards_the_systemic_failure_share():
+    """A run reaching up to the present holds every recent day; that is not breakage."""
+    report = backfill(
+        DAYS,
+        ingest=lambda day: _counts(),
+        resolve=_held_after(4, 5, 6, 7),
+        is_stored=lambda day: False,
+    )
+
+    assert len(report.pending) == 4
+    assert report.completed == [date(2026, 8, 3)]
+
+
+def test_a_held_day_is_named_as_pending_in_its_progress_line():
+    lines: list[str] = []
+    backfill(
+        DAYS[:1],
+        ingest=lambda day: _counts(),
+        resolve=_held_after(3),
+        is_stored=lambda day: False,
+        on_progress=lines.append,
+    )
+
+    assert lines[0].endswith("<- pending until 2026-09-02")
+
+
+def test_labels_written_for_one_domain_of_a_held_day_are_still_counted():
+    """Insider labels land while red flags wait; the summary must not report 0."""
+    from arbiter.evaluation.resolution import WindowsStillOpenError
+
+    def resolve(day: date) -> int:
+        held = WindowsStillOpenError("redflag", day, 1, 3, last_close=date(2026, 9, 2))
+        held.labels_written = 7
+        raise held
+
+    report = backfill(
+        DAYS[:1], ingest=lambda day: _counts(), resolve=resolve, is_stored=lambda day: False
+    )
+
+    assert report.labels == 7

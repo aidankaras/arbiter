@@ -7,6 +7,7 @@ labelling it. These tests pin the truncation at the point it is performed, and
 the statistics computed from whatever survives it.
 """
 
+import decimal
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from itertools import pairwise
@@ -320,3 +321,60 @@ def test_a_bar_whose_utc_date_differs_from_its_session_is_dated_by_the_session()
     )
 
     assert to_session_bar(late).session == date(2026, 7, 13)
+
+
+#: Closes chosen so every statistic is an inexact quotient, logarithm or root,
+#: which is where the ambient decimal context decides the digits.
+_IRREGULAR = [str(Decimal(47) + Decimal(n * 37 % 11) / 7) for n in range(70)]
+
+
+def _irregular_bars() -> list[Bar]:
+    """Seventy sessions ending before acceptance, enough for every statistic."""
+    from datetime import timedelta
+
+    return [
+        Bar(
+            timestamp=datetime(2026, 4, 1, 4, 0, tzinfo=UTC) + timedelta(days=n),
+            open=Decimal(close),
+            high=Decimal(close),
+            low=Decimal(close),
+            close=Decimal(close),
+            volume=Decimal(1000 + n * 13 % 17),
+        )
+        for n, close in enumerate(_IRREGULAR)
+    ]
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        decimal.Context(prec=12),
+        decimal.Context(prec=50),
+        decimal.Context(prec=28, rounding=decimal.ROUND_DOWN),
+    ],
+    ids=["prec=12", "prec=50", "round-down"],
+)
+def test_the_packet_hash_does_not_depend_on_the_callers_decimal_context(context):
+    """Issue #25: the hash is meant to depend on the content and nothing else."""
+    bars = _irregular_bars()
+    reference = _packet(bars)
+    # Premise: the series is long enough that every statistic was computed.
+    assert all(value is not None for value in reference.market.model_dump().values())
+
+    with decimal.localcontext(context):
+        rebuilt = _packet(bars)
+        # Read inside the context too: rendering for the hash rounds as well.
+        rebuilt_hash = rebuilt.content_hash
+        reference_hash = reference.content_hash
+
+    assert rebuilt.market == reference.market
+    assert rebuilt_hash == reference_hash == reference.content_hash
+
+
+def test_market_statistics_carry_no_digits_beyond_a_hundredth_of_a_basis_point():
+    """Digits past that describe the division, not the market."""
+    summary = _packet(_irregular_bars()).market
+
+    for name, value in summary.model_dump().items():
+        assert value is not None, name
+        assert value.as_tuple().exponent >= -12, (name, value)
