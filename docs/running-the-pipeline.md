@@ -47,13 +47,16 @@ labels-redflag: 40
 Labelling lags ingestion. The horizon is five sessions for insider events and
 twenty for red flags, and the consolidated tape will not serve a window ending
 on the current session, so a day becomes measurable only after its window has
-closed. A day holding any event whose window is still open is not labelled at
-all: `arbiter resolve` writes nothing and names the session after which to
-rerun it, and `backfill` reports the day as pending rather than complete, so a
-later run picks it up. A partial day would otherwise look finished and its open
-events would never be labelled. Issuers that cannot
-be priced are recorded under `unpriceable/` beside the labels, so a thin day
-stays distinguishable from a day whose filers were unlistable.
+closed. A domain's day holding any event whose window is still open is not
+labelled at all: `arbiter resolve` writes nothing and names the session after
+which to rerun it. `backfill` labels each domain whose windows have closed and
+reports the day as pending until every domain's have, so a later run picks it
+up; its packets wait with it. A partial day would otherwise look finished and
+its open events would never be labelled. `arbiter report` also refuses a day
+whose labels do not account for its events, which catches partial days written
+before this rule existed. Issuers that cannot be priced are recorded under
+`unpriceable/` beside the labels, so a thin day stays distinguishable from a
+day whose filers were unlistable.
 
 Market data requires `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`.
 

@@ -104,8 +104,8 @@ def resolve(
 
     Runs a day at a time against the consolidated tape, which will not serve a
     window ending on the current session — so the most recent day that can be
-    labeled is always at least one session behind ingestion, and a day whose
-    day with any window still open is refused, writing nothing, rather than
+    labeled is always at least one session behind ingestion. A day holding any
+    event whose window is still open is refused, writing nothing, rather than
     stored as a partial measurement.
 
     Events whose issuer cannot be priced are recorded under `unpriceable/`
@@ -326,7 +326,8 @@ def backfill(
     )
     for day, last_close in sorted(summary.pending.items()):
         typer.echo(
-            f"  {day.isoformat()}: windows open until {last_close.isoformat()}; rerun after it",
+            f"  {day.isoformat()}: windows open until {last_close.isoformat()}; "
+            "its packets wait with it; rerun after it",
             err=True,
         )
     for day, cause in sorted(summary.failed.items()):

@@ -29,6 +29,8 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any, cast
 
+from arbiter.numeric import ARITHMETIC
+
 #: Separators without whitespace, so formatting can never alter a digest.
 _COMPACT = (",", ":")
 
@@ -55,7 +57,9 @@ def _canonical(value: Any) -> Any:
     if isinstance(value, Decimal):
         # Normalised so that 1.50 and 1.5 are one value, then rendered without
         # an exponent so that 1E+2 and 100 are too.
-        return format(value.normalize(), "f")
+        # `normalize` rounds to a context; the caller's would make the digest
+        # depend on it (#25).
+        return format(value.normalize(ARITHMETIC), "f")
     if isinstance(value, float):
         msg = (
             "a float cannot be hashed stably; carry the value as Decimal or a "

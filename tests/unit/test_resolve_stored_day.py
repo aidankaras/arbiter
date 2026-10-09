@@ -179,11 +179,13 @@ def test_a_day_that_priced_everything_still_records_an_empty_list(tmp_path: Path
     assert _unpriceable(tmp_path, "insider", day) == []
 
 
-def _held_day(tmp_path: Path, as_of_days: list[int], today: date) -> list[str]:
+def _held_day(
+    tmp_path: Path, as_of_days: list[int], today: date, requested: list[str] | None = None
+) -> None:
     """Store insider events filed on the given August days, then label as of `today`.
 
-    Returns the symbols the price service was asked for, so a test can show the
-    refusal happened before any request was spent.
+    `requested` collects the symbols the price service was asked for, so a test
+    can show a refusal happened before any request was spent.
     """
     from arbiter.evaluation.resolution import resolve_stored_day
     from arbiter.ingestion.store import write_events
@@ -194,10 +196,10 @@ def _held_day(tmp_path: Path, as_of_days: list[int], today: date) -> list[str]:
         for n in as_of_days
     ]
     write_events(events, tmp_path, "insider", date(2026, 8, 3))
-    requested: list[str] = []
 
     def fetch(symbols, start, end):
-        requested.extend(symbols)
+        if requested is not None:
+            requested.extend(symbols)
         return {symbol: _bars(3, ["10"] * 20) if symbol == "XLP" else [] for symbol in symbols}
 
     resolve_stored_day(
@@ -208,7 +210,6 @@ def _held_day(tmp_path: Path, as_of_days: list[int], today: date) -> list[str]:
         benchmark_for=lambda cik: "XLP",
         today=today,
     )
-    return requested
 
 
 def test_a_day_with_some_windows_still_open_writes_no_labels(tmp_path: Path):
@@ -252,9 +253,14 @@ def test_a_held_day_spends_no_price_requests(tmp_path: Path):
 
     requested: list[str] = []
     with pytest.raises(WindowsStillOpenError):
-        requested = _held_day(tmp_path, as_of_days=[3, 10], today=date(2026, 8, 13))
-
+        _held_day(tmp_path, as_of_days=[3, 10], today=date(2026, 8, 13), requested=requested)
     assert requested == []
+
+    # Premise: the same recorder does see requests on a day that is labelled.
+    _held_day(
+        tmp_path / "ripe", as_of_days=[3, 10], today=date(2026, 8, 31), requested=requested
+    )
+    assert requested
 
 
 def test_the_same_day_is_labelled_once_every_window_has_closed(tmp_path: Path):

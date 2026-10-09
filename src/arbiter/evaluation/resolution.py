@@ -185,13 +185,13 @@ class MissingBenchmarkSeriesError(RuntimeError):
 
 
 class WindowsStillOpenError(RuntimeError):
-    """Raised when a stored day still holds events whose outcome window is open.
+    """Raised when a stored day of a domain holds events whose window is open.
 
-    Nothing is written for such a day. A partial label partition would make the
-    day look stored, a resuming backfill would skip it, and the events still
-    open would never be labelled (#32). Holding the whole day keeps one
-    invariant for every reader of the store: a label partition means the day is
-    finished.
+    Nothing is written for that domain on that day. A partial label partition
+    would make the day look stored, a resuming backfill would skip it, and the
+    events still open would never be labelled (#32). Holding the whole
+    domain-day keeps one invariant for every reader of the store: a label
+    partition means that domain's day is finished.
     """
 
     def __init__(
@@ -199,6 +199,8 @@ class WindowsStillOpenError(RuntimeError):
     ) -> None:
         self.day = day
         self.last_close = last_close
+        #: Labels another domain wrote for the same day before this one was held.
+        self.labels_written = 0
         super().__init__(
             f"{domain} {day.isoformat()}: {open_count} of {total} events have outcome "
             f"windows open until {last_close.isoformat()}; nothing was written, and "

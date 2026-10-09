@@ -381,3 +381,19 @@ def test_a_held_day_is_named_as_pending_in_its_progress_line():
     )
 
     assert lines[0].endswith("<- pending until 2026-09-02")
+
+
+def test_labels_written_for_one_domain_of_a_held_day_are_still_counted():
+    """Insider labels land while red flags wait; the summary must not report 0."""
+    from arbiter.evaluation.resolution import WindowsStillOpenError
+
+    def resolve(day: date) -> int:
+        held = WindowsStillOpenError("redflag", day, 1, 3, last_close=date(2026, 9, 2))
+        held.labels_written = 7
+        raise held
+
+    report = backfill(
+        DAYS[:1], ingest=lambda day: _counts(), resolve=resolve, is_stored=lambda day: False
+    )
+
+    assert report.labels == 7

@@ -363,9 +363,12 @@ def test_the_packet_hash_does_not_depend_on_the_callers_decimal_context(context)
 
     with decimal.localcontext(context):
         rebuilt = _packet(bars)
+        # Read inside the context too: rendering for the hash rounds as well.
+        rebuilt_hash = rebuilt.content_hash
+        reference_hash = reference.content_hash
 
     assert rebuilt.market == reference.market
-    assert rebuilt.content_hash == reference.content_hash
+    assert rebuilt_hash == reference_hash == reference.content_hash
 
 
 def test_market_statistics_carry_no_digits_beyond_a_hundredth_of_a_basis_point():

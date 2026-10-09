@@ -175,6 +175,7 @@ def backfill(
             # up to the present, where every recent day is held for its longer
             # red-flag window. Not stored either, so a later run picks it up.
             report.pending[day] = exc.last_close
+            report.labels += exc.labels_written
         except _RUN_LEVEL_FAULTS:
             # Not a property of this day. A missing credential or a refused feed
             # will fail every remaining day identically, and absorbing it into a
@@ -276,17 +277,29 @@ def ingest_and_resolve(
         def fetch(symbols: Sequence[str], start: date, end: date) -> dict[str, list[Bar]]:
             return daily_bars_tolerating_gaps(list(symbols), start, end, today)
 
-        return sum(
-            resolve_stored_day(
-                day=day,
-                domain=domain,
-                root=root,
-                fetch_bars=fetch,
-                benchmark_for=benchmark_for_issuer,
-                today=today,
-                ticker_for=issuer_ticker,
-            )
-            for domain in HORIZONS
-        )
+        # Each domain is held on its own windows: a red-flag window runs four
+        # times as long, and holding insider labels for it would leave the most
+        # recent weeks unlabelled for no reason. The day is reported held once
+        # every domain has had its turn, so labels written are still counted.
+        written = 0
+        held: WindowsStillOpenError | None = None
+        for domain in HORIZONS:
+            try:
+                written += resolve_stored_day(
+                    day=day,
+                    domain=domain,
+                    root=root,
+                    fetch_bars=fetch,
+                    benchmark_for=benchmark_for_issuer,
+                    today=today,
+                    ticker_for=issuer_ticker,
+                )
+            except WindowsStillOpenError as exc:
+                if held is None or exc.last_close > held.last_close:
+                    held = exc
+        if held is not None:
+            held.labels_written = written
+            raise held
+        return written
 
     return ingest, resolve
