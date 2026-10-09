@@ -184,6 +184,28 @@ class MissingBenchmarkSeriesError(RuntimeError):
     """
 
 
+class WindowsStillOpenError(RuntimeError):
+    """Raised when a stored day still holds events whose outcome window is open.
+
+    Nothing is written for such a day. A partial label partition would make the
+    day look stored, a resuming backfill would skip it, and the events still
+    open would never be labelled (#32). Holding the whole day keeps one
+    invariant for every reader of the store: a label partition means the day is
+    finished.
+    """
+
+    def __init__(
+        self, domain: str, day: date, open_count: int, total: int, last_close: date
+    ) -> None:
+        self.day = day
+        self.last_close = last_close
+        super().__init__(
+            f"{domain} {day.isoformat()}: {open_count} of {total} events have outcome "
+            f"windows open until {last_close.isoformat()}; nothing was written, and "
+            "the day can be labelled from the session after that"
+        )
+
+
 class UnresolvableEventError(ValueError):
     """Raised when an event cannot be labelled from the series available.
 
@@ -334,14 +356,18 @@ def resolve_stored_day(
     Without it a red-flag day yields nothing, since an 8-K names its filer by
     CIK alone. Rows that already carry a ticker never reach it.
 
-    Returns the number of labels written. A partition is written even when that
-    number is zero, so a day that was processed and yielded nothing stays
-    distinguishable from a day never processed — the same distinction the event
-    store keeps, and for the same reason.
+    Returns the number of labels written. A partition is written only once every
+    event's window has closed, and then even when that number is zero, so a day
+    that was processed and yielded nothing stays distinguishable from a day never
+    processed — the same distinction the event store keeps, and for the same
+    reason.
 
     Issuers that cannot be priced are recorded beside the labels rather than
     discarded, so a thin day can be told apart from a day whose issuers were
     unlistable.
+
+    Raises:
+        WindowsStillOpenError: some event's outcome window has not closed.
     """
     from arbiter.ingestion.store import read_events, write_events, write_unpriceable
 
@@ -350,9 +376,20 @@ def resolve_stored_day(
     if ticker_for is not None:
         rows, unpriceable = with_tickers(rows, ticker_for)
 
-    labels, unmeasurable = resolve_day(
-        requests_from_rows(rows, domain), fetch_bars, benchmark_for, today
-    )
+    requests = requests_from_rows(rows, domain)
+    still_open = [request for request in requests if not resolvable_on(request, today)]
+    if still_open:
+        # Checked before any price request: nothing fetched for a held day would
+        # be written.
+        raise WindowsStillOpenError(
+            domain,
+            day,
+            open_count=len(still_open),
+            total=len(requests),
+            last_close=max(window_closes_on(request) for request in still_open),
+        )
+
+    labels, unmeasurable = resolve_day(requests, fetch_bars, benchmark_for, today)
     write_events(labels, root, f"labels-{domain}", day)
     write_unpriceable([*unpriceable, *unmeasurable], root, domain, day, stage="labeling")
 

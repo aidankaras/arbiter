@@ -47,8 +47,11 @@ labels-redflag: 40
 Labelling lags ingestion. The horizon is five sessions for insider events and
 twenty for red flags, and the consolidated tape will not serve a window ending
 on the current session, so a day becomes measurable only after its window has
-closed. Events whose window is still open are left unlabelled, and `arbiter
-report` refuses a day holding any until it is relabelled. Issuers that cannot
+closed. A day holding any event whose window is still open is not labelled at
+all: `arbiter resolve` writes nothing and names the session after which to
+rerun it, and `backfill` reports the day as pending rather than complete, so a
+later run picks it up. A partial day would otherwise look finished and its open
+events would never be labelled. Issuers that cannot
 be priced are recorded under `unpriceable/` beside the labels, so a thin day
 stays distinguishable from a day whose filers were unlistable.
 

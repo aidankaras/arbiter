@@ -26,7 +26,7 @@ from arbiter.arms.features import UnsupportedDomainError
 from arbiter.config import Settings, get_settings
 from arbiter.evaluation.figure import render_baseline_figure
 from arbiter.evaluation.report import render_baseline_report
-from arbiter.evaluation.resolution import HORIZONS, resolve_stored_day
+from arbiter.evaluation.resolution import HORIZONS, WindowsStillOpenError, resolve_stored_day
 from arbiter.ingestion.backfill import backfill as run_backfill
 from arbiter.ingestion.backfill import day_is_stored, ingest_and_resolve, sampled_trading_days
 from arbiter.ingestion.market import Bar, current_session_date, daily_bars_tolerating_gaps
@@ -105,7 +105,8 @@ def resolve(
     Runs a day at a time against the consolidated tape, which will not serve a
     window ending on the current session — so the most recent day that can be
     labeled is always at least one session behind ingestion, and a day whose
-    window has not closed yields nothing rather than a partial measurement.
+    day with any window still open is refused, writing nothing, rather than
+    stored as a partial measurement.
 
     Events whose issuer cannot be priced are recorded under `unpriceable/`
     beside the labels rather than dropped.
@@ -123,15 +124,19 @@ def resolve(
     def fetch(symbols: Sequence[str], start: date, end: date) -> dict[str, list[Bar]]:
         return daily_bars_tolerating_gaps(list(symbols), start, end, today)
 
-    written = resolve_stored_day(
-        day=date.fromisoformat(day),
-        domain=domain,
-        root=Path(root),
-        fetch_bars=fetch,
-        benchmark_for=benchmark_for_issuer,
-        today=today,
-        ticker_for=issuer_ticker,
-    )
+    try:
+        written = resolve_stored_day(
+            day=date.fromisoformat(day),
+            domain=domain,
+            root=Path(root),
+            fetch_bars=fetch,
+            benchmark_for=benchmark_for_issuer,
+            today=today,
+            ticker_for=issuer_ticker,
+        )
+    except WindowsStillOpenError as exc:
+        typer.echo(f"not labelled yet: {exc}", err=True)
+        raise typer.Exit(code=1) from None
     typer.echo(f"labels-{domain}: {written}")
 
 
@@ -315,8 +320,14 @@ def backfill(
 
     typer.echo(
         f"completed: {len(summary.completed)}  skipped: {len(summary.skipped)}  "
-        f"failed: {len(summary.failed)}  events: {summary.events}  labels: {summary.labels}"
+        f"failed: {len(summary.failed)}  pending: {len(summary.pending)}  "
+        f"events: {summary.events}  labels: {summary.labels}"
         + (f"  packets: {summary.packets}" if with_packets else "")
     )
+    for day, last_close in sorted(summary.pending.items()):
+        typer.echo(
+            f"  {day.isoformat()}: windows open until {last_close.isoformat()}; rerun after it",
+            err=True,
+        )
     for day, cause in sorted(summary.failed.items()):
         typer.echo(f"  {day.isoformat()}: {cause}", err=True)
