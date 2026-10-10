@@ -206,3 +206,27 @@ def test_a_constant_reference_rate_is_scored_against_that_rate_not_the_realised_
 
     assert brier_skill_score(stale, outcomes, reference_rate=0.5) == pytest.approx(0.0)
     assert brier_skill_score(stale, outcomes) < 0
+
+
+def test_a_per_observation_reference_equal_everywhere_matches_the_scalar():
+    outcomes = [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]
+    forecasts = [0.6, 0.5, 0.7, 0.4, 0.3, 0.5, 0.2, 0.4, 0.6, 0.1]
+
+    scalar = brier_skill_score(forecasts, outcomes, reference_rate=0.35)
+    sequence = brier_skill_score(forecasts, outcomes, reference_rate=[0.35] * len(outcomes))
+
+    assert sequence == pytest.approx(scalar)
+
+
+def test_each_outcome_is_scored_against_its_own_reference():
+    """Worked by hand: BS_model = 0.205, BS_ref = (0.25 + 0.25 + 0.01 + 0.01) / 4 = 0.13."""
+    skill = brier_skill_score(
+        [0.6, 0.4, 0.5, 0.5], [1, 0, 1, 0], reference_rate=[0.5, 0.5, 0.9, 0.1]
+    )
+
+    assert skill == pytest.approx(1 - 0.205 / 0.13)
+
+
+def test_references_that_do_not_pair_with_the_outcomes_are_refused():
+    with pytest.raises(InsufficientObservationsError):
+        brier_skill_score([0.5, 0.5], [1, 0], reference_rate=[0.5])

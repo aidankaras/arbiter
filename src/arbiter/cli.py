@@ -6,6 +6,7 @@ function that is independently testable without the CLI.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
@@ -16,7 +17,9 @@ from pydantic import ValidationError
 
 from arbiter import __version__
 from arbiter.arms.evaluate import (
-    TRAIN_FRACTION,
+    INITIAL_FRACTION,
+    REFIT_EVERY,
+    DayOfEvents,
     LabelCoverageError,
     evaluate_baseline,
     load_days,
@@ -25,6 +28,7 @@ from arbiter.arms.evaluate import (
 from arbiter.arms.features import UnsupportedDomainError
 from arbiter.config import Settings, get_settings
 from arbiter.evaluation.figure import render_baseline_figure
+from arbiter.evaluation.metrics import InsufficientObservationsError
 from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.resolution import HORIZONS, WindowsStillOpenError, resolve_stored_day
 from arbiter.ingestion.backfill import backfill as run_backfill
@@ -185,24 +189,38 @@ def build_packets(
             typer.echo(f"  ... and {len(excluded) - 10} more")
 
 
+def _days_needed(initial_fraction: float) -> int:
+    """Return the fewest populated days that leave an initial fit and two scored days."""
+    needed = 3
+    while needed - math.ceil(needed * initial_fraction) < 2:
+        needed += 1
+    return needed
+
+
 @app.command()
 def report(
     domain: str = "insider",
     root: str = "data/events",
     out: str = "reports",
-    train_fraction: float = TRAIN_FRACTION,
+    initial_fraction: float = INITIAL_FRACTION,
+    refit_every: int = REFIT_EVERY,
 ) -> None:
     """Fit the baseline arm on the stored history and write its measurement.
 
-    Reads every day the store holds labels for, fits on the earlier fraction of
-    them, and scores the rest. The report is written to `reports/` so that what
+    Reads every day the store holds labels for, fits on the first
+    `--initial-fraction` of them, then scores the rest walk-forward, refitting
+    every `--refit-every` scored days. The report is written to `reports/` so that what
     was claimed at a given commit stays inspectable; recomputing against more
     data produces a new report rather than an edit to the old one.
     """
-    if not 0 < train_fraction < 1:
+    if not 0 < initial_fraction < 1:
         typer.echo(
-            f"--train-fraction must be strictly between 0 and 1, not {train_fraction}", err=True
+            f"--initial-fraction must be strictly between 0 and 1, not {initial_fraction}",
+            err=True,
         )
+        raise typer.Exit(code=2)
+    if refit_every < 1:
+        typer.echo(f"--refit-every must be at least 1, not {refit_every}", err=True)
         raise typer.Exit(code=2)
 
     store = Path(root)
@@ -211,20 +229,32 @@ def report(
         typer.echo(f"no labelled {domain} days under {root}; run `arbiter backfill`", err=True)
         raise typer.Exit(code=1)
 
+    loaded: list[DayOfEvents] = []
     try:
         # `load_days` is what raises: features are built as each day is read,
         # so the call has to sit inside the handler rather than before it.
         loaded = load_days(store, domain, days)
-        # An outcome enters at the session after its filing and closes HORIZONS
-        # sessions later, so it can stay open that many sessions plus one.
         evaluation = evaluate_baseline(
-            loaded, train_fraction, embargo_sessions=HORIZONS[domain] + 1
+            loaded,
+            initial_fraction=initial_fraction,
+            refit_every=refit_every,
         )
     except UnsupportedDomainError as exc:
         typer.echo(f"the baseline arm cannot score '{domain}': {exc}", err=True)
         raise typer.Exit(code=2) from None
     except LabelCoverageError as exc:
         typer.echo(f"refusing to score a day whose labels are stale: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    except InsufficientObservationsError as exc:
+        populated = sum(1 for day in loaded if len(day) > 0)
+        typer.echo(
+            f"cannot evaluate: {exc}. {populated} populated days are stored; at "
+            f"--initial-fraction {initial_fraction} at least "
+            f"{_days_needed(initial_fraction)} are needed. Collect more days with "
+            "`arbiter backfill`, or change --initial-fraction: a larger window "
+            "leaves fewer days to score, a smaller one leaves fewer to fit on.",
+            err=True,
+        )
         raise typer.Exit(code=1) from None
 
     # Both are rendered before either is written, so a failure in one cannot

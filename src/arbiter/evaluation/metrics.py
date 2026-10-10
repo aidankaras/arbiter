@@ -176,7 +176,7 @@ def brier_score(probabilities: Sequence[float], outcomes: Sequence[int]) -> floa
 def brier_skill_score(
     probabilities: Sequence[float],
     outcomes: Sequence[int],
-    reference_rate: float | None = None,
+    reference_rate: float | Sequence[float] | None = None,
 ) -> float:
     """Return the Brier score's improvement over forecasting a constant rate.
 
@@ -190,10 +190,21 @@ def brier_skill_score(
     known in advance — a stricter reference than any feasible constant. A
     rate fixed before the outcomes, such as the training period's, is the
     comparison a forecaster could actually have made.
+
+    A sequence gives one reference per outcome, for forecasts made by a model
+    refitted over time: each outcome is compared against the constant quoted
+    when it was forecast, not against one rate fixed for the whole period.
+
+    Raises:
+        InsufficientObservationsError: a sequence of references whose length
+            differs from the outcomes'.
     """
     realised = np.asarray(outcomes, dtype=float)
     base_rate = float(realised.mean()) if reference_rate is None else reference_rate
-    reference = float(np.mean((base_rate - realised) ** 2))
+    if not isinstance(base_rate, float | int) and len(base_rate) != len(outcomes):
+        msg = f"{len(base_rate)} reference rates against {len(outcomes)} outcomes"
+        raise InsufficientObservationsError(msg)
+    reference = float(np.mean((np.asarray(base_rate, dtype=float) - realised) ** 2))
     if reference == 0:
         return math.nan
 

@@ -11,16 +11,14 @@ from datetime import date
 
 import pytest
 
-from arbiter.arms.evaluate import Evaluation
+from arbiter.arms.evaluate import Evaluation, Fold
 from arbiter.evaluation.metrics import CalibrationBin, ICSummary
 from arbiter.evaluation.report import render_baseline_report
 
 GENERATED = date(2026, 9, 18)
 
 
-def _evaluation(
-    mean: float, standard_error: float, t: float, embargoed: list[date] | None = None
-) -> Evaluation:
+def _evaluation(mean: float, standard_error: float, t: float) -> Evaluation:
     return Evaluation(
         ic=ICSummary(
             mean=mean,
@@ -38,9 +36,22 @@ def _evaluation(
         brier_skill_scored_rate=0.0009,
         fitted_base_rate=0.492,
         base_rate=0.486,
-        train_days=[date(2026, 3, 2), date(2026, 6, 1)],
+        initial_days=[date(2026, 3, 2), date(2026, 6, 1)],
         test_days=[date(2026, 6, 8), date(2026, 8, 11)],
-        embargoed_days=embargoed or [],
+        folds=[
+            Fold(
+                fit_days=[date(2026, 3, 2), date(2026, 6, 1)],
+                scored_days=[date(2026, 6, 8)],
+                fitted_base_rate=0.49,
+                train_events=7000,
+            ),
+            Fold(
+                fit_days=[date(2026, 3, 2), date(2026, 6, 1), date(2026, 6, 8)],
+                scored_days=[date(2026, 8, 11)],
+                fitted_base_rate=0.494,
+                train_events=9000,
+            ),
+        ],
         train_events=9000,
         test_events=6000,
         test_events_unlabelled=0,
@@ -85,7 +96,7 @@ def test_an_undefined_estimate_draws_no_conclusion():
         "3,400",  # issuer-days the estimate rests on
         "48.6%",  # base rate
         "2026-06-08 to 2026-08-11",  # scoring period
-        "2026-03-02 to 2026-06-01",  # fitting period
+        "2026-03-02 to 2026-06-01",  # initial fitting window
     ],
 )
 def test_the_sample_behind_the_estimate_is_stated(expected: str):
@@ -106,27 +117,32 @@ def test_days_scored_and_days_that_could_be_ranked_are_reported_separately():
     assert "Days contributing a rank correlation" in rendered
 
 
-def test_the_chronological_split_is_stated_so_a_reader_can_check_it():
+def test_the_walk_forward_rule_is_stated_so_a_reader_can_check_it():
     rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
 
-    assert "every scored day falls after every fitted day" in rendered
+    assert "walk-forward" in rendered
+    assert "whose outcomes had closed before the block's first day" in rendered
 
 
-def test_days_withheld_between_fitting_and_scoring_are_named():
-    """A reader checking the split needs to see the gap, not infer it from dates."""
-    withheld = [date(2026, 6, 2), date(2026, 6, 4)]
-    rendered = render_baseline_report(
-        _evaluation(0.004, 0.011, 0.36, embargoed=withheld), GENERATED
-    )
-
-    assert "2026-06-02, 2026-06-04" in rendered
-    assert "still open" in rendered
-
-
-def test_a_split_with_nothing_withheld_does_not_claim_an_embargo():
+def test_the_refit_count_and_cadence_are_stated():
+    """Two folds of one scored day each: the table must say so."""
     rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
 
-    assert "still open" not in rendered
+    assert "| Refits | 2, one per block of up to 1 scored days |" in rendered
+
+
+def test_the_final_refit_is_named_as_the_source_of_the_weights():
+    rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
+
+    assert "From the final refit" in rendered.split("## Fitted weights")[1]
+    assert "| Final refit | fitted on 3 days, 9,000 events |" in rendered
+
+
+def test_the_first_refit_is_sized_beside_the_final_one():
+    """The initial window row alone would imply the first model saw all of it."""
+    rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
+
+    assert "| First refit | fitted on 2 days, 7,000 events" in rendered
 
 
 def test_calibration_bands_are_rendered_with_their_counts():
@@ -175,7 +191,10 @@ def test_a_forecast_worse_than_the_base_rate_is_said_so_in_the_verdict():
     rendered = render_baseline_report(worse, GENERATED)
     verdict = rendered.split("## What this rests on")[0]
 
-    assert "less useful than forecasting the fitting period's rate of 49.2%" in verdict
+    assert (
+        "less useful than forecasting the up-rate each refit had observed, 49.2% on average"
+        in verdict
+    )
     assert "-0.2224" in verdict
 
 
@@ -287,7 +306,7 @@ def test_the_verdict_states_skill_against_both_references():
     rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
     verdict = rendered.split("## What this rests on")[0]
 
-    assert "fitting period's rate of 49.2%" in verdict
+    assert "the up-rate each refit had observed, 49.2% on average" in verdict
     assert "scored period's own rate of 48.6%, which was not knowable in advance" in verdict
     assert "+0.0009" in verdict
 
