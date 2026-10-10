@@ -1,0 +1,29 @@
+{
+  "accession_no": "0001104659-26-105662",
+  "rows": [
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "RGTI",
+      "context_ref": "From2026-09-042026-09-04_us-gaap_CommonStockMember",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "RGTIW",
+      "context_ref": "From2026-09-042026-09-04_us-gaap_WarrantMember",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Common     Stock, $0.0001 par value per share",
+      "context_ref": "From2026-09-042026-09-04_us-gaap_CommonStockMember",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Warrants,     each whole warrant exercisable for one share of Common Stock at an exercise price of $11.50 per share",
+      "context_ref": "From2026-09-042026-09-04_us-gaap_WarrantMember",
+      "is_dimensioned": true
+    }
+  ]
+}

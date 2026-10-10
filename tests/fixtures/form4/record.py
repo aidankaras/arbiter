@@ -16,8 +16,18 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from arbiter.ingestion.edgar import configure_identity, to_record
+
+
+def reporting_owners(parsed: Any) -> list[dict[str, str]]:
+    """Return a parsed Form 4's reporting owners as plain CIK and name pairs."""
+    owners = parsed.reporting_owners
+    return [
+        {"cik": str(owner.cik), "name": str(owner.name)}
+        for owner in getattr(owners, "owners", owners)
+    ]
 
 
 def record(accession_no: str, into: Path) -> Path:
@@ -42,6 +52,9 @@ def record(accession_no: str, into: Path) -> Path:
         # owner's identity while the sector benchmark is looked up by issuer.
         "issuer_cik": int(parsed.issuer.cik),
         "issuer_ticker": str(parsed.issuer.ticker),
+        # Every owner on the form, as the client exposes them. A jointly filed
+        # transaction is one table row whose name string joins all of these.
+        "reporting_owners": reporting_owners(parsed),
         "rows": json.loads(parsed.to_dataframe().to_json(orient="records", date_format="iso")),
     }
 

@@ -1,0 +1,89 @@
+{
+  "accession_no": "0001423689-26-000124",
+  "rows": [
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "AGNC",
+      "context_ref": "c-2",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "AGNCN",
+      "context_ref": "c-3",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "AGNCM",
+      "context_ref": "c-4",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "AGNCO",
+      "context_ref": "c-5",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "AGNCP",
+      "context_ref": "c-6",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "AGNCL",
+      "context_ref": "c-7",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "AGNCZ",
+      "context_ref": "c-8",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Common Stock, par value $0.01 per share",
+      "context_ref": "c-2",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Depositary shares of 7.000% Series C Fixed-to-Floating Rate Cumulative Redeemable Preferred Stock",
+      "context_ref": "c-3",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Depositary shares of 6.875% Series D Fixed-to-Floating Rate Cumulative Redeemable Preferred Stock",
+      "context_ref": "c-4",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Depositary shares of 6.50% Series E Fixed-to-Floating Rate Cumulative Redeemable Preferred Stock",
+      "context_ref": "c-5",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Depositary shares of 6.125% Series F Fixed-to-Floating Rate Cumulative Redeemable Preferred Stock",
+      "context_ref": "c-6",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Depositary shares of 7.75% Series G Fixed-Rate Reset Cumulative Redeemable Preferred Stock",
+      "context_ref": "c-7",
+      "is_dimensioned": true
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Depositary shares of 8.75% Series H Fixed-Rate Cumulative Redeemable Preferred Stock",
+      "context_ref": "c-8",
+      "is_dimensioned": true
+    }
+  ]
+}

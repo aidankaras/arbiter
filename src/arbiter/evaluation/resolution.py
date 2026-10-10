@@ -245,9 +245,12 @@ def with_tickers(
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """Give each row a ticker, looking one up where the filing does not carry it.
 
-    Form 4 reports a ticker; an 8-K identifies its filer by CIK alone. Rows that
-    already carry one are left untouched, since looking it up again would spend
-    a request to learn what the filing already said.
+    Form 4 reports a ticker, and a red-flag event carries the one its 8-K's cover
+    page stated. Rows that already carry one are left untouched, since looking it
+    up again would spend a request to learn what the filing already said, and
+    would substitute SEC's *current* map for the symbol at filing time. A stored
+    `None` or blank ticker counts as missing, not as a symbol. Rows resolved here
+    are marked `ticker_source = "current_map"`.
 
     Issuers are looked up once each rather than once per event, because a day's
     filings concentrate in far fewer issuers than filings.
@@ -300,7 +303,7 @@ def with_tickers(
             )
             continue
 
-        priced.append({**row, "ticker": canonical})
+        priced.append({**row, "ticker": canonical, "ticker_source": "current_map"})
 
     return priced, unpriceable
 

@@ -26,6 +26,14 @@ class Issuer:
         self.ticker = ticker
 
 
+class Owner:
+    """A reporting owner as the filing client exposes one: zero-padded CIK string."""
+
+    def __init__(self, cik: str, name: str) -> None:
+        self.cik = cik
+        self.name = name
+
+
 class Form4Stub:
     """Stands in for the parsed filing, exposing only what the extractor reads."""
 
@@ -35,6 +43,11 @@ class Form4Stub:
         # Defaults to the payload's own CIK so a fixture that predates the
         # issuer distinction still describes one consistent company.
         self.issuer = Issuer(payload.get("issuer_cik", payload.get("cik", 0)))
+        # Recorded fixtures carry the owners as the SEC served them; a payload
+        # without them has none, which the extractor stores as an empty tuple.
+        self.reporting_owners = [
+            Owner(owner["cik"], owner["name"]) for owner in payload.get("reporting_owners", [])
+        ]
 
     def to_dataframe(self):
         import pandas as pd

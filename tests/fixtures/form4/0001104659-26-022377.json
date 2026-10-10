@@ -8,6 +8,16 @@
   "aff10b5_one": false,
   "issuer_cik": 1845437,
   "issuer_ticker": "NPWR",
+  "reporting_owners": [
+    {
+      "cik": "0001981100",
+      "name": "8 Rivers Capital, LLC"
+    },
+    {
+      "cik": "0001973442",
+      "name": "Damian R. Beauchamp"
+    }
+  ],
   "rows": [
     {
       "Transaction Type": "Sale",

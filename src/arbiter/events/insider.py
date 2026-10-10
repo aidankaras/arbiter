@@ -76,6 +76,11 @@ class InsiderEvent(BaseModel):
     # and materially wrong statement from "the filing did not say".
     remaining_shares: Decimal | None
     is_10b5_1: bool
+    # CIKs of every reporting owner of the filing, sorted and de-duplicated, so an
+    # insider can be matched to their trading history by identity rather than by
+    # the collapsed name string. A transaction filed jointly lists all its owners;
+    # empty only for partitions written before the field existed.
+    owner_ciks: tuple[int, ...] = ()
 
 
 def is_candidate(event: InsiderEvent, min_value_usd: Decimal) -> bool:
@@ -171,6 +176,17 @@ def _optional_decimal(row: dict[str, Any], column: str, accession_no: str) -> De
     return value
 
 
+def _owner_ciks(form4: Any) -> tuple[int, ...]:
+    """Return the filing's reporting-owner CIKs, sorted and de-duplicated.
+
+    Every transaction on a Form 4 is reported by every owner on it, which is why
+    the table collapses their names into one string. The CIKs are therefore the
+    filing's, and each collapsed transaction carries all of them.
+    """
+    owners = form4.reporting_owners
+    return tuple(sorted({int(owner.cik) for owner in getattr(owners, "owners", owners)}))
+
+
 def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEvent]:
     """Convert one parsed Form 4 into events, one per reported transaction.
 
@@ -193,6 +209,7 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
     # Events for one issuer would then be measured against different benchmarks
     # depending on which index entry they happened to arrive through.
     issuer_cik = int(form4.issuer.cik)
+    owner_ciks = _owner_ciks(form4)
 
     events: list[InsiderEvent] = []
     # One transaction reported jointly appears once per reporting owner, with
@@ -273,6 +290,7 @@ def extract_insider_events(record: FilingRecord, form4: Any) -> list[InsiderEven
                     row, "Remaining Shares", record.accession_no
                 ),
                 is_10b5_1=is_plan_trade,
+                owner_ciks=owner_ciks,
             )
         )
     return events

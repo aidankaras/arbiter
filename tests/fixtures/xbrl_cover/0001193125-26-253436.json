@@ -1,0 +1,17 @@
+{
+  "accession_no": "0001193125-26-253436",
+  "rows": [
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "FBRX",
+      "context_ref": "duration_2026-05-29_to_2026-05-29",
+      "is_dimensioned": false
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Common Stock, $0.001 par value",
+      "context_ref": "duration_2026-05-29_to_2026-05-29",
+      "is_dimensioned": false
+    }
+  ]
+}

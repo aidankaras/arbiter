@@ -1,0 +1,17 @@
+{
+  "accession_no": "0001628280-26-039277",
+  "rows": [
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "COLD",
+      "context_ref": "c-1",
+      "is_dimensioned": false
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Common Stock, $0.01 par value per share",
+      "context_ref": "c-1",
+      "is_dimensioned": false
+    }
+  ]
+}

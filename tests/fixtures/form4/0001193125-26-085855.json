@@ -8,6 +8,36 @@
   "aff10b5_one": false,
   "issuer_cik": 2100782,
   "issuer_ticker": "GENB",
+  "reporting_owners": [
+    {
+      "cik": "0001222012",
+      "name": "AFEYAN NOUBAR"
+    },
+    {
+      "cik": "0001725008",
+      "name": "Flagship VentureLabs VI LLC"
+    },
+    {
+      "cik": "0001716926",
+      "name": "Flagship Pioneering Fund VI, L.P."
+    },
+    {
+      "cik": "0001805916",
+      "name": "Flagship Pioneering Fund VII, L.P."
+    },
+    {
+      "cik": "0001780956",
+      "name": "Nutritional Health LTP Fund, L.P."
+    },
+    {
+      "cik": "0001761283",
+      "name": "Flagship Pioneering Special Opportunities Fund II, L.P."
+    },
+    {
+      "cik": "0001918834",
+      "name": "FPN II, L.P."
+    }
+  ],
   "rows": [
     {
       "Transaction Type": "Purchase",

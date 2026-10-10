@@ -20,7 +20,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from arbiter.ingestion.edgar import FilingRecord
+from arbiter.ingestion.edgar import CoverSecurity, FilingRecord
+from arbiter.ingestion.market import tradeable_symbol
 
 TRIGGER_ITEMS = frozenset({"4.01", "4.02", "5.02"})
 
@@ -37,6 +38,15 @@ class RedFlagEvent(BaseModel):
     item_codes: tuple[str, ...]
     item_text: str
     has_press_release: bool
+    # The symbol the filing's own cover page states, so labelling does not depend
+    # on SEC's *current* ticker map: an issuer that delists after filing drops
+    # out of that map, and auditor changes, restatements and officer departures
+    # predict delisting, which would exclude events in correlation with the
+    # outcome. `None` when the filing carries no usable symbol, in which case
+    # labelling falls back to the current map.
+    ticker: str | None = None
+    # "filing" when `ticker` was read from the filing; `None` otherwise.
+    ticker_source: str | None = None
 
 
 #: Item labels vary in case, spacing, and sub-letter. Item 4.02 is nearly always
@@ -81,6 +91,54 @@ def extract_redflag_event(record: FilingRecord, report: Any) -> RedFlagEvent | N
         item_text=_item_text(report),
         has_press_release=bool(report.has_press_release),
     )
+
+
+#: Titles that name the common equity. A title naming a warrant, right, preferred
+#: share or depositary interest in one also contains "common" ("Warrants to
+#: purchase one share of Class A Common Stock"), and those are not the stock this
+#: study prices.
+_COMMON_TITLE = re.compile(r"\bcommon\b", re.IGNORECASE)
+_NOT_COMMON_EQUITY = re.compile(
+    r"warrant|right|preferred|depositary|note|debenture|subordinated", re.IGNORECASE
+)
+
+
+def choose_filing_ticker(securities: Iterable[CoverSecurity]) -> str | None:
+    """Pick the symbol of the issuer's common equity from a cover page.
+
+    A cover page lists one row per registered security, so an issuer with listed
+    preferreds or warrants states several symbols, and the first is not reliably
+    the common stock. Order of preference:
+
+    1. a symbol whose paired security title names common stock;
+    2. otherwise the first symbol `tradeable_symbol` accepts;
+    3. otherwise `None`.
+
+    Rule 2 is shape-only: `tradeable_symbol` accepts a preferred such as `AGNCN`
+    because it cannot tell one from a common symbol by spelling. It is reached
+    only when no title identifies the common stock, typically because the filer
+    tagged symbols without titles.
+    """
+    candidates: list[tuple[str, str | None]] = []
+    for security in securities:
+        symbol = tradeable_symbol(security.symbol)
+        if symbol is not None:
+            candidates.append((symbol, security.title))
+
+    for symbol, title in candidates:
+        if title and _COMMON_TITLE.search(title) and not _NOT_COMMON_EQUITY.search(title):
+            return symbol
+    return candidates[0][0] if candidates else None
+
+
+def with_filing_ticker(
+    event: RedFlagEvent, securities: Iterable[CoverSecurity]
+) -> RedFlagEvent:
+    """Return the event carrying the ticker its filing states, if it states one."""
+    ticker = choose_filing_ticker(securities)
+    if ticker is None:
+        return event
+    return event.model_copy(update={"ticker": ticker, "ticker_source": "filing"})
 
 
 def _item_text(report: Any) -> str:

@@ -114,6 +114,51 @@ class FilingRecord:
     filing_date: date
 
 
+@dataclass(frozen=True)
+class CoverSecurity:
+    """One registered security stated on a filing's cover page."""
+
+    symbol: str
+    # The title tagged in the same XBRL context as the symbol, or `None` when the
+    # filer tagged a symbol without one.
+    title: str | None
+
+
+def cover_securities(filing: Any) -> list[CoverSecurity]:
+    """Read the securities a filing's cover page lists, in document order.
+
+    The symbol (`dei:TradingSymbol`) and title (`dei:Security12bTitle`) of one
+    security share an XBRL context: a single-security filing uses the plain
+    entity context, and a filing listing several securities gives each its own
+    dimensioned context. Pairing is therefore by `context_ref`, never by
+    position, which would mispair as soon as one security lacked a title.
+
+    Returns an empty list for a filing with no XBRL or no symbol. Whatever the
+    XBRL client raises propagates: the caller decides how to record a filing
+    whose cover page could not be read.
+    """
+    xbrl = filing.xbrl()
+    if xbrl is None:
+        return []
+    symbols = xbrl.facts.query().by_concept("dei:TradingSymbol").to_dataframe()
+    if symbols.empty:
+        return []
+    titles = xbrl.facts.query().by_concept("dei:Security12bTitle").to_dataframe()
+
+    title_by_context: dict[str, str] = {}
+    if not titles.empty:
+        for row in titles.to_dict(orient="records"):
+            title_by_context.setdefault(str(row["context_ref"]), str(row["value"]))
+
+    return [
+        CoverSecurity(
+            symbol=str(row["value"]),
+            title=title_by_context.get(str(row["context_ref"])),
+        )
+        for row in symbols.to_dict(orient="records")
+    ]
+
+
 def configure_identity() -> None:
     """Register the contact string the SEC requires on every request."""
     set_identity(get_settings().sec_user_agent)
