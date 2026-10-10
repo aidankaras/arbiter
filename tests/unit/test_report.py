@@ -354,3 +354,13 @@ def test_the_bands_running_against_a_weighted_shift_are_counted_as_such():
 
     assert "run low" in verdict
     assert "with 2 of 3 bands running the other way" in verdict
+
+
+def test_the_report_names_the_overlap_its_error_allows_for():
+    from dataclasses import replace
+
+    evaluation = _evaluation(mean=0.02, standard_error=0.015, t=1.33)
+    allowing = replace(evaluation, ic=replace(evaluation.ic, overlap_lags=5))
+
+    assert "overlapping the next 5" in render_baseline_report(allowing, date(2026, 10, 10))
+    assert "overlapping" not in render_baseline_report(evaluation, date(2026, 10, 10))

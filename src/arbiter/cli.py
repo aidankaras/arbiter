@@ -238,6 +238,10 @@ def report(
             loaded,
             initial_fraction=initial_fraction,
             refit_every=refit_every,
+            # A window opens at the next session and closes HORIZONS[domain]
+            # sessions after that one, so its exit session is the entry session
+            # of the day HORIZONS[domain] later: it overlaps that many neighbours.
+            overlap_lags=HORIZONS[domain],
         )
     except UnsupportedDomainError as exc:
         typer.echo(f"the baseline arm cannot score '{domain}': {exc}", err=True)

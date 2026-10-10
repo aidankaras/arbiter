@@ -79,10 +79,19 @@ class ICSummary:
     """A forecast's discrimination, averaged over days."""
 
     mean: float
+    #: The larger of the independent error and one allowing for `overlap_lags`
+    #: days of correlation between neighbours; `t_statistic` and
+    #: `is_significant` use it.
     standard_error: float
     t_statistic: float
     days: int
     observations: int
+    #: Treating every day as independent; equal to `standard_error` when
+    #: `overlap_lags` is 0. Reported so the effect of the overlap is visible.
+    independent_standard_error: float = math.nan
+    #: Neighbouring days whose outcome windows overlap, allowed for in
+    #: `standard_error`.
+    overlap_lags: int = 0
 
     @property
     def is_significant(self) -> bool:
@@ -105,18 +114,32 @@ def defined_ic[Key](daily: Mapping[Key, float]) -> dict[Key, float]:
     return {key: value for key, value in daily.items() if not math.isnan(value)}
 
 
-def summarise_ic[Key](daily: Mapping[Key, float], observations: int) -> ICSummary:
+def summarise_ic[Key](
+    daily: Mapping[Key, float], observations: int, overlap_lags: int = 0
+) -> ICSummary:
     """Average per-day information coefficients and report the uncertainty.
 
-    The standard error is taken across days, which is the level at which the
-    observations are close to independent. Days whose coefficient is undefined
-    are excluded rather than counted as zero, since no ranking existed to score.
+    The standard error is taken across days. Days are not independent when
+    their outcome windows overlap: a five-session outcome scored on consecutive
+    sessions shares up to four sessions with each neighbour, so their
+    coefficients move together and an error treating them as independent is
+    optimistic. `overlap_lags` neighbours are therefore allowed for with a
+    Newey-West estimator (Bartlett weights), scaled by n/(n-1) so that with no
+    lags it reduces exactly to the sample standard deviation over root n. Lags
+    count positions in key order, which equal sessions when scored days are
+    consecutive sessions; across gaps between sampled days the overlap they
+    allow for is larger than the true one, which errs conservative. The error
+    reported is the larger of this and the independent one.
+
+    Days whose coefficient is undefined are excluded rather than counted as
+    zero, since no ranking existed to score.
 
     Raises:
         InsufficientObservationsError: fewer than two days carry a defined
             coefficient, so no spread can be estimated.
     """
-    values = list(defined_ic(daily).values())
+    # In key order: the overlap allowed for is between neighbouring days.
+    values = [value for _, value in sorted(defined_ic(daily).items())]
     if len(values) < 2:
         msg = f"an average across days needs at least two days, got {len(values)}"
         raise InsufficientObservationsError(msg)
@@ -124,7 +147,14 @@ def summarise_ic[Key](daily: Mapping[Key, float], observations: int) -> ICSummar
     array = np.asarray(values, dtype=float)
     mean = float(array.mean())
     # The sample standard deviation, so a single day cannot read as certainty.
-    standard_error = float(array.std(ddof=1) / math.sqrt(len(array)))
+    independent = float(array.std(ddof=1) / math.sqrt(len(array)))
+    # Never narrower than the independent error. Newey-West is biased downward
+    # at samples this small, so on its own it overstates precision (an iid
+    # simulation at 60 days rejects at |t| > 2 about 7% of the time against a
+    # nominal 5%); the floor keeps the headline from claiming more precision
+    # than days treated as independent would support. It errs towards the
+    # conclusion that there is no skill, and both errors are reported.
+    standard_error = max(independent, _newey_west_standard_error(array, overlap_lags))
 
     return ICSummary(
         mean=mean,
@@ -132,7 +162,34 @@ def summarise_ic[Key](daily: Mapping[Key, float], observations: int) -> ICSummar
         t_statistic=_t_statistic(mean, standard_error),
         days=len(array),
         observations=observations,
+        independent_standard_error=independent,
+        overlap_lags=overlap_lags,
     )
+
+
+def _newey_west_standard_error(values: np.ndarray, lags: int) -> float:
+    """Standard error of the mean of a series correlated over `lags` neighbours.
+
+    Raises:
+        ValueError: `lags` is negative.
+    """
+    if lags < 0:
+        msg = f"overlap_lags must be non-negative, not {lags}"
+        raise ValueError(msg)
+    n = len(values)
+    deviations = values - values.mean()
+
+    def autocovariance(lag: int) -> float:
+        return float((deviations[lag:] * deviations[: n - lag]).sum() / n)
+
+    # Autocovariances at lags of n or more are zero (no pairs exist); the
+    # Bartlett weights keep their bandwidth `lags` regardless.
+    long_run = autocovariance(0) + 2 * sum(
+        (1 - lag / (lags + 1)) * autocovariance(lag) for lag in range(1, min(lags, n - 1) + 1)
+    )
+    # Bartlett weights keep the estimate non-negative; the floor guards only
+    # against rounding below zero on a series with no spread.
+    return math.sqrt(max(long_run, 0.0) / n * n / (n - 1))
 
 
 def _t_statistic(mean: float, standard_error: float) -> float:

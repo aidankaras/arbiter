@@ -8,7 +8,7 @@ Generated 2026-10-10 from the event store.
 
 ## Result
 
-**No measurable skill.** The mean information coefficient is +0.0285 against a standard error of 0.0187 (t = +1.52), which is indistinguishable from zero at the conventional threshold. With 60 scored days this is the expected outcome whether or not an edge exists; it is a statement about the sample, not evidence that no signal is there. The stated probabilities are worth no more than forecasting the up-rate each refit had observed, 47.3% on average for every issuer-day: a Brier skill of -0.0015 is indistinguishable from it. Against the scored period's own rate of 47.0%, which was not knowable in advance, the Brier skill is -0.0013. The bands below disagree in direction: 2 run high and 1 run low, so the miss is dispersion rather than a shift.
+**No measurable skill.** The mean information coefficient is +0.0285 against a standard error of 0.0187, the larger of the error treating days as independent and one allowing for each day's outcome window overlapping the next 5 (t = +1.52), which is indistinguishable from zero at the conventional threshold. With 60 scored days this is the expected outcome whether or not an edge exists; it is a statement about the sample, not evidence that no signal is there. The stated probabilities are worth no more than forecasting the up-rate each refit had observed, 47.3% on average for every issuer-day: a Brier skill of -0.0015 is indistinguishable from it. Against the scored period's own rate of 47.0%, which was not knowable in advance, the Brier skill is -0.0013. The bands below disagree in direction: 2 run high and 1 run low, so the miss is dispersion rather than a shift.
 
 ## What this rests on
 
@@ -97,7 +97,7 @@ at one company on one day resolve to a single outcome.
 | 2026-09-08 | -0.1518 |
 | 2026-09-09 | -0.1205 |
 | **Mean** | **+0.0285** |
-| Standard error | 0.0187 |
+| Standard error | 0.0187, the larger of the error treating days as independent and one allowing for each day's outcome window overlapping the next 5 |
 | t | +1.52 |
 
 ## Calibration
