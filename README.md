@@ -16,12 +16,17 @@ The conventional arm, measured on insider transactions:
 
 ![Daily information coefficient and calibration of the baseline arm](reports/baseline-insider.svg)
 
-- **Mean information coefficient +0.121 (t = 3.09)** over 11 out-of-sample days
-  and 592 issuer-days, scored strictly after the 17 days it was fitted on.
-- **Calibration no better than a constant.** Brier skill is +0.003 against
+- **No measurable skill.** Mean information coefficient +0.012 (t = 0.57) over
+  29 out-of-sample days and 2,655 issuer-days, scored strictly after the 51 days
+  it was fitted on.
+- **Calibration no better than a constant.** Brier skill is -0.001 against
   forecasting the fitting period's up-rate, inside the noise.
-- One sample from one regime: a measurement of the control, not a strategy. Full
-  report: [`reports/baseline-insider.md`](reports/baseline-insider.md).
+- **An earlier, smaller sample overstated it.** Sampling every fourth trading day
+  gave +0.121 (t = 3.09) on 11 scored days. Filling in every trading day from
+  June to September did not bear that out, which is the shrinkage a small sample
+  should be expected to show.
+- A measurement of the control, not a strategy. Full report:
+  [`reports/baseline-insider.md`](reports/baseline-insider.md).
 
 An earlier result was withdrawn after duplicated rows were found in the event
 store; [`reports/withdrawn/`](reports/withdrawn/) keeps it and the reason.

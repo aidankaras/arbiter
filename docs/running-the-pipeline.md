@@ -64,7 +64,14 @@ Market data requires `ALPACA_API_KEY` and `ALPACA_SECRET_KEY`.
 
 ```bash
 uv run arbiter backfill 2026-03-02 2026-08-14 --every 4
+uv run arbiter backfill 2026-06-01 2026-09-09 --with-packets
 ```
+
+These two runs build the store the published report was measured on: every
+fourth trading day from March, then every trading day from June, when the
+period after the language models' training cutoffs begins. The second run
+builds packets, so it re-ingests the days the two share rather than skipping
+them; doing so reproduced their stored events exactly.
 
 `backfill` ingests and labels a range of trading days, writing its progress as
 it goes. Days already stored are skipped, so an interrupted run is restarted
