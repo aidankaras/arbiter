@@ -7,6 +7,10 @@ on:
 
 jobs:
   review:
+    # The action refuses runs started by a bot, so a Dependabot pull request
+    # would carry a failed check that says nothing about the change. Skipped
+    # rather than allow-listed: the job is handed an OAuth token.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read

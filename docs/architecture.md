@@ -125,7 +125,8 @@ any outcome. Re-running a day produces the same result.
 ## Scheduling and deployment
 
 *Planned. Today the pipeline runs from the command line, and GitHub Actions runs
-CI only.* The intended schedule:
+CI, an automated pull-request review and an on-demand standards audit; none of
+the scheduled jobs below is built.* The intended schedule:
 
 | Cadence | Work | Inference cost |
 |---|---|---|
