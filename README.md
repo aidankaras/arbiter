@@ -16,11 +16,12 @@ The conventional arm, measured on insider transactions:
 
 ![Daily information coefficient and calibration of the baseline arm](reports/baseline-insider.svg)
 
-- **No measurable skill.** Mean information coefficient +0.012 (t = 0.57) over
-  29 out-of-sample days and 2,655 issuer-days, scored strictly after the 51 days
-  it was fitted on.
-- **Calibration no better than a constant.** Brier skill is -0.001 against
-  forecasting the fitting period's up-rate, inside the noise.
+- **No measurable skill.** Mean information coefficient +0.029 (t = 1.52) over
+  60 out-of-sample days and 3,909 issuer-days, evaluated walk-forward: the model
+  is refitted every ten days on events whose outcomes had already closed, and
+  each block is scored by the model fitted before it.
+- **Calibration no better than a constant.** Brier skill is -0.0015 against
+  forecasting the up-rate each refit had observed, inside the noise.
 - **An earlier, smaller sample overstated it.** Sampling every fourth trading day
   gave +0.121 (t = 3.09) on 11 scored days. Filling in every trading day from
   June to September did not bear that out, which is the shrinkage a small sample

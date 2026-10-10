@@ -244,15 +244,18 @@ exist so far; the others arrive with the arms and portfolios that produce them.
   so a Form 4 carrying many transactions counts once.
 - **Information coefficient.** The Spearman rank correlation between forecast
   and abnormal return across a day's issuers, averaged over scored days with at
-  least ten issuers. Its standard error treats days as independent. Sampled
-  days are four sessions apart while outcomes run five, so adjacent days' windows
-  overlap by a session and the stated error is somewhat optimistic.
+  least ten issuers. Its standard error treats days as independent, which they
+  are not: most scored days are consecutive sessions while outcomes run five, so
+  adjacent days' windows overlap by up to four sessions, daily coefficients are
+  correlated, and the stated error is optimistic.
 - **Brier skill** is reported against two constant forecasts. The headline
   reference is the up-rate of the refit that made each forecast, weighted by
   issuer-day: a constant a forecaster could have quoted before any outcome in
   that block was known. The second is the scored period's own up-rate, which
-  was not knowable in advance and is the best constant in hindsight, so skill
-  against it is never above the headline figure. Calibration and both skills are
+  was not knowable in advance and is the best single constant in hindsight.
+  Because the headline reference varies by refit, it can track drift better than
+  any one constant, so the hindsight skill is not bounded by the headline in
+  either direction. Calibration and both skills are
   pooled over every scored issuer-day, including days too thin to rank. The
   fitted weights shown in the report are the final refit's.
 - **Label coverage.** A scored day's events without an outcome are dropped and
