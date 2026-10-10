@@ -63,6 +63,9 @@ class ResolutionRequest:
     ticker: str
     cik: int
     horizon: int
+    # Where the ticker came from: "filing" or "current_map" for a red-flag
+    # event, `None` for a Form 4, which states its own and needs no marker.
+    ticker_source: str | None = None
 
 
 def entry_sessions(bars: list[Bar], as_of: datetime) -> list[Bar]:
@@ -238,6 +241,10 @@ class Label(BaseModel):
     horizon_days: int
     entry_session: date
     exit_session: date
+    # Carried from the event so a label records whether its ticker was read from
+    # the filing or from SEC's current map. `None` for partitions written before
+    # the field existed and for insider events.
+    ticker_source: str | None = None
 
 
 def with_tickers(
@@ -308,6 +315,11 @@ def with_tickers(
     return priced, unpriceable
 
 
+def _optional_text(value: object) -> str | None:
+    """Return a stored text cell, or `None` when it is absent or null."""
+    return None if value is None else str(value)
+
+
 def requests_from_rows(
     rows: Sequence[Mapping[str, Any]], domain: str
 ) -> list[ResolutionRequest]:
@@ -341,6 +353,7 @@ def requests_from_rows(
                 ticker=str(row["ticker"]),
                 cik=int(cast("int", row["cik"])),
                 horizon=horizon,
+                ticker_source=_optional_text(row.get("ticker_source")),
             )
         )
     return requests
@@ -494,6 +507,7 @@ def resolve_day(
                     benchmark_symbol=benchmark_symbol,
                     horizon=event.horizon,
                     accession_no=event.accession_no,
+                    ticker_source=event.ticker_source,
                 )
             )
         except (UnresolvableEventError, InsufficientPriceDataError) as exc:
@@ -581,6 +595,7 @@ def resolve_label(
     benchmark_symbol: str,
     horizon: int,
     accession_no: str = "",
+    ticker_source: str | None = None,
 ) -> Label:
     """Measure one event's abnormal return over its horizon.
 
@@ -617,4 +632,5 @@ def resolve_label(
         horizon_days=horizon,
         entry_session=entry.timestamp.date(),
         exit_session=exit_.timestamp.date(),
+        ticker_source=ticker_source,
     )

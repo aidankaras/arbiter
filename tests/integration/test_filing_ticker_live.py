@@ -20,18 +20,27 @@ def _identity() -> None:
 
 
 @pytest.mark.parametrize(
-    ("accession", "expected"),
+    ("accession", "cik", "expected"),
     [
-        ("0001628280-26-039277", "COLD"),
+        ("0001628280-26-039277", 1455863, "COLD"),
         # An issuer since delisted: the current company map no longer lists it,
         # the filing's cover page still does (issue #43).
-        ("0001193125-26-253436", "FBRX"),
+        ("0001193125-26-253436", 1419041, "FBRX"),
         # Common stock plus six listed depositary preferreds.
-        ("0001423689-26-000124", "AGNC"),
+        ("0001423689-26-000124", 1423689, "AGNC"),
+        # A SPAC: units, Class A ordinary shares, warrants and rights.
+        ("0001213900-26-103656", 2070887, "CRAC"),
+        ("0001213900-26-103758", 1852207, "BEAG"),
+        ("0001213900-26-103784", 2028201, "COLA"),
+        # Combined filings: the parent has a ticker, a subsidiary does not.
+        ("0000092122-26-000056", 92122, "SO"),
+        ("0000092122-26-000056", 3153, None),
+        ("0000065984-26-000279", 65984, "ETR"),
+        ("0000065984-26-000279", 7323, None),
     ],
 )
-def test_the_filings_own_symbol_is_read(accession: str, expected: str):
-    assert choose_filing_ticker(cover_securities(find(accession))) == expected
+def test_the_filings_own_symbol_is_read(accession: str, cik: int, expected: str | None):
+    assert choose_filing_ticker(cover_securities(find(accession)), cik) == expected
 
 
 def test_a_multi_symbol_cover_page_lists_every_security():

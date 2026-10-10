@@ -5,85 +5,149 @@
       "concept": "dei:TradingSymbol",
       "value": "AGNC",
       "context_ref": "c-2",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "us-gaap:CommonStockMember"
+      }
     },
     {
       "concept": "dei:TradingSymbol",
       "value": "AGNCN",
       "context_ref": "c-3",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:Depositoryshareseachrepresentinga11000thinterestinashareof7.000SeriesCFixedtoFloatingRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:TradingSymbol",
       "value": "AGNCM",
       "context_ref": "c-4",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:Depositoryshareseachrepresentinga11000thinterestinashareof6.875SeriesDFixedtoFloatingRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:TradingSymbol",
       "value": "AGNCO",
       "context_ref": "c-5",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:Depositoryshareseachrepresentinga11000thinterestinashareof6.500SeriesEFixedtoFloatingRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:TradingSymbol",
       "value": "AGNCP",
       "context_ref": "c-6",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:Depositaryshareseachrepresentinga11000thinterestinashareof6.125SeriesFFixedtoFloatingRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:TradingSymbol",
       "value": "AGNCL",
       "context_ref": "c-7",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:DepositarySharesEachRepresentingA11000thInterestInAShareOf775SeriesGFixedRateResetCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:TradingSymbol",
       "value": "AGNCZ",
       "context_ref": "c-8",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:DepositarySharesEachRepresentingA11000thInterestInAShareOf8.75SeriesHFixedRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:Security12bTitle",
       "value": "Common Stock, par value $0.01 per share",
       "context_ref": "c-2",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "us-gaap:CommonStockMember"
+      }
     },
     {
       "concept": "dei:Security12bTitle",
       "value": "Depositary shares of 7.000% Series C Fixed-to-Floating Rate Cumulative Redeemable Preferred Stock",
       "context_ref": "c-3",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:Depositoryshareseachrepresentinga11000thinterestinashareof7.000SeriesCFixedtoFloatingRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:Security12bTitle",
       "value": "Depositary shares of 6.875% Series D Fixed-to-Floating Rate Cumulative Redeemable Preferred Stock",
       "context_ref": "c-4",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:Depositoryshareseachrepresentinga11000thinterestinashareof6.875SeriesDFixedtoFloatingRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:Security12bTitle",
       "value": "Depositary shares of 6.50% Series E Fixed-to-Floating Rate Cumulative Redeemable Preferred Stock",
       "context_ref": "c-5",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:Depositoryshareseachrepresentinga11000thinterestinashareof6.500SeriesEFixedtoFloatingRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:Security12bTitle",
       "value": "Depositary shares of 6.125% Series F Fixed-to-Floating Rate Cumulative Redeemable Preferred Stock",
       "context_ref": "c-6",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:Depositaryshareseachrepresentinga11000thinterestinashareof6.125SeriesFFixedtoFloatingRateCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:Security12bTitle",
       "value": "Depositary shares of 7.75% Series G Fixed-Rate Reset Cumulative Redeemable Preferred Stock",
       "context_ref": "c-7",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:DepositarySharesEachRepresentingA11000thInterestInAShareOf775SeriesGFixedRateResetCumulativeRedeemablePreferredStockMember"
+      }
     },
     {
       "concept": "dei:Security12bTitle",
       "value": "Depositary shares of 8.75% Series H Fixed-Rate Cumulative Redeemable Preferred Stock",
       "context_ref": "c-8",
-      "is_dimensioned": true
+      "is_dimensioned": true,
+      "entity_identifier": "0001423689",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "agnc:DepositarySharesEachRepresentingA11000thInterestInAShareOf8.75SeriesHFixedRateCumulativeRedeemablePreferredStockMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0001423689",
+      "context_ref": "c-1",
+      "is_dimensioned": false,
+      "entity_identifier": "0001423689",
+      "dimensions": {}
     }
   ]
 }

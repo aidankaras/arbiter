@@ -240,6 +240,13 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
     failures_path.parent.mkdir(parents=True, exist_ok=True)
     failures_path.write_text(json.dumps(redflag_ticker_failures, indent=1) + "\n")
 
+    # The insider domain does not depend on 8-K XBRL, so it is stored before the
+    # red-flag guard can fail the day: an outage of the cover-page reads must not
+    # withhold the domain the published report rests on. The day still counts as
+    # unstored (the red-flag partition is missing), so a rerun retries it.
+    write_events(insider_events, root, "insider", day)
+    write_unpriceable(insider_unpriceable, root, "insider", day, stage="extraction")
+
     attempted_reads = len(redflag_events)
     if (
         attempted_reads >= _MIN_TICKER_READS_FOR_GUARD
@@ -252,9 +259,7 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
         )
         raise SystemicTickerReadError(msg)
 
-    write_events(insider_events, root, "insider", day)
     write_events(redflag_events, root, "redflag", day)
-    write_unpriceable(insider_unpriceable, root, "insider", day, stage="extraction")
 
     return {
         "insider": len(insider_events),
