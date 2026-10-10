@@ -27,7 +27,7 @@ import pytest
 
 from arbiter.events.redflags import RedFlagEvent, choose_filing_ticker, with_filing_ticker
 from arbiter.ingestion.edgar import CoverSecurity, FilingRecord, cover_securities
-from arbiter.ingestion.pipeline import ingest_day
+from arbiter.ingestion.pipeline import SystemicTickerReadError, ingest_day
 from arbiter.ingestion.store import read_events
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "xbrl_cover"
@@ -163,14 +163,14 @@ def _filing_from(rows: list[dict[str, Any]]) -> _Filing:
     return _Filing(_Xbrl(rows))
 
 
-def test_without_a_title_the_first_acceptable_symbol_is_taken():
+def test_two_untitled_acceptable_symbols_are_ambiguous():
     securities = [
         CoverSecurity("ABC.", None),
         CoverSecurity("XYZ", None),
         CoverSecurity("QRS", None),
     ]
 
-    assert choose_filing_ticker(securities) == "XYZ"
+    assert choose_filing_ticker(securities) is None
 
 
 def test_a_title_pairs_by_context_not_by_position():
@@ -332,3 +332,75 @@ def test_xbrl_is_not_read_for_an_8k_that_is_not_an_event(
 
     assert reads == [], "no XBRL read for a filing that carries no trigger item"
     assert read_events(tmp_path, "redflag", date(2026, 9, 11)) == []
+
+
+def test_untitled_symbols_among_several_yield_none():
+    """AGNC's recorded rows with every title removed: seven symbols, no way to tell
+    the common stock from AGNCN. A guess could be a preferred."""
+    rows = [r for r in _rows(PREFERREDS) if r["concept"] == "dei:TradingSymbol"]
+    assert len(rows) == 7, "premise: several tradeable symbols remain"
+    assert not any(r["concept"] == "dei:Security12bTitle" for r in rows), "premise: no titles"
+
+    assert _ticker(_filing_from(rows)) is None
+
+
+def test_a_single_untitled_symbol_is_taken():
+    rows = [r for r in _rows(SINGLE) if r["concept"] == "dei:TradingSymbol"]
+    assert len(rows) == 1, "premise: exactly one symbol, and no title"
+
+    assert _ticker(_filing_from(rows)) == "COLD"
+
+
+def test_only_tradeable_symbols_count_toward_the_single_symbol_rule():
+    securities = [CoverSecurity("N/A", None), CoverSecurity("XYZ", None)]
+
+    assert choose_filing_ticker(securities) == "XYZ"
+
+
+# --- the day-level guard on failed cover-page reads ---------------------------
+
+
+def _day_of(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, total: int, failing: int) -> None:
+    boom = RuntimeError("XBRL instance could not be parsed")
+    filings = [
+        (
+            _record(f"0000000001-26-{i:06d}", i),
+            _EightK(_Filing(raises=boom) if i < failing else _filing(SINGLE)),
+        )
+        for i in range(total)
+    ]
+    _run_day(monkeypatch, tmp_path, filings)
+
+
+def _stored(tmp_path: Path) -> bool:
+    return (tmp_path / "redflag" / "2026-09-11.parquet").exists()
+
+
+def test_exactly_half_failing_is_recorded_not_raised(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Six reads, three failed: not more than half."""
+    _day_of(monkeypatch, tmp_path, total=6, failing=3)
+
+    assert _stored(tmp_path)
+
+
+def test_more_than_half_failing_fails_the_day(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Five reads, three failed: a day stored like this would fall back to the map."""
+    with pytest.raises(SystemicTickerReadError, match="3 of 5"):
+        _day_of(monkeypatch, tmp_path, total=5, failing=3)
+
+    assert not _stored(tmp_path), "a failed day must stay unrecorded so a rerun retries it"
+    failures = json.loads(
+        (tmp_path / "rejected" / "redflag-ticker" / "2026-09-11.json").read_text()
+    )
+    assert len(failures) == 3, "the causes are still on record"
+
+
+def test_below_the_minimum_attempts_even_total_failure_is_only_recorded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """Four reads, all four failed: too few to say the client is broken."""
+    _day_of(monkeypatch, tmp_path, total=4, failing=4)
+
+    assert _stored(tmp_path)

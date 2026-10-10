@@ -48,6 +48,23 @@ _PARSE_FAILURES = (ValueError, KeyError, AttributeError)
 _SYSTEMIC_REJECTION_RATE = 0.05
 
 
+#: Fewer qualifying events than this say nothing about the XBRL client: two
+#: failures out of three is a bad afternoon, not a break.
+_MIN_TICKER_READS_FOR_GUARD = 5
+
+#: Above this share of failed reads the client is taken to be broken.
+_SYSTEMIC_TICKER_FAILURE_RATE = 0.5
+
+
+class SystemicTickerReadError(RuntimeError):
+    """Raised when most of a day's cover-page reads failed.
+
+    Storing such a day would silently route its events to the current ticker
+    map, which is the delisting-correlated exclusion this field exists to avoid.
+    Failing the day lets a backfill record it and a rerun retry it.
+    """
+
+
 class SystemicParseFailureError(RuntimeError):
     """Raised when so many filings fail to parse that the day is untrustworthy."""
 
@@ -215,12 +232,25 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
         )
         raise SystemicParseFailureError(msg)
 
-    # Not part of the rejection count or the systemic guard: these events were
-    # kept, and only lost their point-in-time ticker. Written for every day, empty
-    # included, so a clean day is distinguishable from one never recorded.
+    # Outside the parse-rejection count: these events were kept and only lost
+    # their point-in-time ticker, so they are judged by their own guard below.
+    # Written for every day, empty included, and before the guard so a failed day
+    # still leaves its causes on record.
     failures_path = root / "rejected" / "redflag-ticker" / f"{day.isoformat()}.json"
     failures_path.parent.mkdir(parents=True, exist_ok=True)
     failures_path.write_text(json.dumps(redflag_ticker_failures, indent=1) + "\n")
+
+    attempted_reads = len(redflag_events)
+    if (
+        attempted_reads >= _MIN_TICKER_READS_FOR_GUARD
+        and len(redflag_ticker_failures) / attempted_reads > _SYSTEMIC_TICKER_FAILURE_RATE
+    ):
+        msg = (
+            f"{len(redflag_ticker_failures)} of {attempted_reads} red-flag cover-page "
+            f"reads on {day.isoformat()} failed (see {failures_path}); the day is not "
+            "recorded, because its tickers would silently fall back to the current map."
+        )
+        raise SystemicTickerReadError(msg)
 
     write_events(insider_events, root, "insider", day)
     write_events(redflag_events, root, "redflag", day)

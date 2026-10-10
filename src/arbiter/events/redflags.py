@@ -111,13 +111,13 @@ def choose_filing_ticker(securities: Iterable[CoverSecurity]) -> str | None:
     the common stock. Order of preference:
 
     1. a symbol whose paired security title names common stock;
-    2. otherwise the first symbol `tradeable_symbol` accepts;
-    3. otherwise `None`.
+    2. otherwise the symbol, if the filing lists exactly one that
+       `tradeable_symbol` accepts;
+    3. otherwise `None`, and labelling falls back to the current map.
 
-    Rule 2 is shape-only: `tradeable_symbol` accepts a preferred such as `AGNCN`
-    because it cannot tell one from a common symbol by spelling. It is reached
-    only when no title identifies the common stock, typically because the filer
-    tagged symbols without titles.
+    Rule 2 refuses to guess among several: `tradeable_symbol` is shape-only and
+    accepts a preferred such as `AGNCN`, so with no title to tell them apart any
+    pick could be the wrong security.
     """
     candidates: list[tuple[str, str | None]] = []
     for security in securities:
@@ -128,7 +128,10 @@ def choose_filing_ticker(securities: Iterable[CoverSecurity]) -> str | None:
     for symbol, title in candidates:
         if title and _COMMON_TITLE.search(title) and not _NOT_COMMON_EQUITY.search(title):
             return symbol
-    return candidates[0][0] if candidates else None
+    # Several untitled symbols cannot be told apart by spelling, and a preferred
+    # or warrant ticker would silently measure the wrong security. `None` costs
+    # one event its point-in-time ticker; a wrong symbol corrupts its label.
+    return candidates[0][0] if len(candidates) == 1 else None
 
 
 def with_filing_ticker(

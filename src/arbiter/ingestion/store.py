@@ -72,14 +72,19 @@ def _scalar_name(annotation: object) -> str | None:
 def _schema_for(model: type[BaseModel]) -> pa.Schema:
     """Derive a stable Arrow schema from an event model's fields.
 
-    Only scalar fields are declared. A collection field, such as a tuple of item
-    codes, is left for Arrow to infer, because inference is safe for a shape
-    that carries no precision to lose. Scalars are declared precisely because
-    inference reads their width from whichever values a given day happened to
-    contain.
+    Scalar fields and tuples of integers are declared. Any other collection field,
+    such as a tuple of item codes, is left for Arrow to infer, because inference
+    is safe for a shape that carries no precision to lose. Scalars are declared
+    precisely because inference reads their width from whichever values a given
+    day happened to contain.
     """
     fields: list[pa.Field] = []
     for name, info in model.model_fields.items():
+        if info.annotation == tuple[int, ...]:
+            # Declared rather than inferred: a day whose lists are all empty
+            # would otherwise infer list<null> and disagree with other days.
+            fields.append(pa.field(name, pa.list_(pa.int64()), nullable=True))
+            continue
         scalar = _scalar_name(info.annotation)
         if scalar is None:
             continue

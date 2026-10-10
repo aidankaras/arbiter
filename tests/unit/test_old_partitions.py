@@ -127,3 +127,15 @@ def test_a_day_where_no_filing_stated_a_ticker_still_stores_a_string_column(tmp_
 
     schema = pq.read_schema(tmp_path / "redflag" / f"{DAY.isoformat()}.parquet")
     assert schema.field("ticker").type == pa.string()
+
+
+def test_owner_ciks_is_a_declared_integer_list_even_when_every_list_is_empty(tmp_path: Path):
+    """Inference would give list<null> for an all-empty day and disagree with other days."""
+    write_events([_insider()], tmp_path, "insider", DAY)
+    write_events([_insider(owner_ciks=(1, 2))], tmp_path, "insider", date(2026, 9, 12))
+
+    empty_day = pq.read_schema(tmp_path / "insider" / f"{DAY.isoformat()}.parquet")
+    full_day = pq.read_schema(tmp_path / "insider" / "2026-09-12.parquet")
+
+    assert empty_day.field("owner_ciks").type == pa.list_(pa.int64())
+    assert full_day.field("owner_ciks").type == pa.list_(pa.int64())
