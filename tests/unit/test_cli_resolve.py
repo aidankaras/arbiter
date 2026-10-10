@@ -98,3 +98,54 @@ def test_too_few_days_to_evaluate_is_reported_with_a_remedy_not_a_traceback(
     assert "1 populated days are stored" in result.output
     assert "at least 3 are needed" in result.output
     assert "arbiter backfill" in result.output
+
+
+def test_report_allows_for_every_later_day_whose_window_shares_a_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The lag count is derived from the labelling rule, not from the horizon:
+    count the later filing days whose window opens on or before this one closes."""
+    from datetime import UTC, datetime, timedelta
+
+    from arbiter.evaluation.resolution import (
+        ResolutionRequest,
+        sessions_after,
+        window_closes_on,
+    )
+
+    def window(day: date) -> tuple[date, date]:
+        filed = ResolutionRequest(
+            accession_no="x",
+            as_of=datetime.combine(day, datetime.min.time(), UTC) + timedelta(hours=21),
+            ticker="MO",
+            cik=1,
+            horizon=HORIZONS["insider"],
+        )
+        return sessions_after(day, 1), window_closes_on(filed)
+
+    first = date(2026, 6, 1)
+    _, closes = window(first)
+    overlapping = 0
+    later = first
+    while True:
+        later = sessions_after(later, 1)
+        if window(later)[0] > closes:
+            break
+        overlapping += 1
+    # Premise: the windows really do overlap several neighbours.
+    assert overlapping > 1
+
+    seen: dict[str, object] = {}
+
+    def capture(days: object, **options: object) -> object:
+        seen.update(options)
+        msg = "stop after capturing the options"
+        raise InsufficientObservationsError(msg)
+
+    monkeypatch.setattr("arbiter.cli.stored_days", lambda *_: [first])
+    monkeypatch.setattr("arbiter.cli.load_days", lambda *_: [])
+    monkeypatch.setattr("arbiter.cli.evaluate_baseline", capture)
+
+    runner.invoke(app, ["report", "--root", str(tmp_path)])
+
+    assert seen["overlap_lags"] == overlapping

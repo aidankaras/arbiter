@@ -371,8 +371,12 @@ def evaluate_baseline(
     *,
     initial_fraction: float = INITIAL_FRACTION,
     refit_every: int = REFIT_EVERY,
+    overlap_lags: int = 0,
 ) -> Evaluation:
     """Score the baseline walk-forward; see `forecast_walk_forward` for the rule.
+
+    `overlap_lags` is how many neighbouring scored days share outcome sessions
+    with each day, allowed for in the information coefficient's standard error.
 
     Raises:
         ValueError: as `forecast_walk_forward`.
@@ -432,7 +436,7 @@ def evaluate_baseline(
                 issuer_days += len(issuer_forecasts)
 
     return Evaluation(
-        ic=summarise_ic(daily, observations=issuer_days),
+        ic=summarise_ic(daily, observations=issuer_days, overlap_lags=overlap_lags),
         daily_ic=daily,
         calibration=calibration_curve(pooled_probabilities, pooled_outcomes),
         brier_skill=brier_skill_score(

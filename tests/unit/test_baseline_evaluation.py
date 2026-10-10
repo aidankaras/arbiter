@@ -598,3 +598,12 @@ def test_a_scored_day_on_which_nothing_resolved_still_reports_its_unlabelled_eve
 def test_an_issuer_day_with_no_abnormal_return_did_not_rise():
     """The outcome is whether the stock beat its benchmark; matching it is not a rise."""
     assert _rose([0.0, 0.01, -0.01]) == [0, 1, 0]
+
+
+def test_the_overlap_allowance_reaches_the_reported_error():
+    plain = evaluate_baseline(_informative_days())
+    allowing = evaluate_baseline(_informative_days(), overlap_lags=5)
+
+    assert plain.ic.overlap_lags == 0
+    assert allowing.ic.overlap_lags == 5
+    assert allowing.ic.independent_standard_error == plain.ic.standard_error

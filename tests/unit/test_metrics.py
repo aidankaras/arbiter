@@ -9,6 +9,7 @@ forecast that has none.
 
 import math
 
+import numpy as np
 import pytest
 
 from arbiter.evaluation.metrics import (
@@ -230,3 +231,94 @@ def test_each_outcome_is_scored_against_its_own_reference():
 def test_references_that_do_not_pair_with_the_outcomes_are_refused():
     with pytest.raises(InsufficientObservationsError):
         brier_skill_score([0.5, 0.5], [1, 0], reference_rate=[0.5])
+
+
+def test_overlap_allowance_matches_a_hand_computed_newey_west_error():
+    """Series 1, 2, 3, 4 with one lag, worked by hand.
+
+    Deviations -1.5, -0.5, 0.5, 1.5. Autocovariances over n: lag 0 = 5/4,
+    lag 1 = 1.25/4. Bartlett weight at lag 1 with one lag is 1/2, so the long-run
+    variance is 5/4 + 2 * 1/2 * 1.25/4 = 1.5625; over n, times n/(n-1):
+    1.5625 / 4 * 4/3 = 0.5208..., whose root is 0.72169.
+    """
+    summary = summarise_ic(
+        {"a": 1.0, "b": 2.0, "c": 3.0, "d": 4.0}, observations=4, overlap_lags=1
+    )
+
+    assert summary.standard_error == pytest.approx(0.721688, abs=1e-6)  # wider, so kept
+    assert summary.independent_standard_error == pytest.approx(0.645497, abs=1e-6)
+    assert summary.overlap_lags == 1
+
+
+def test_with_no_lags_the_overlap_estimator_is_exactly_the_independent_one():
+    from arbiter.evaluation.metrics import _newey_west_standard_error
+
+    values = np.asarray([math.sin(i) for i in range(12)])
+
+    assert _newey_west_standard_error(values, 0) == pytest.approx(
+        values.std(ddof=1) / math.sqrt(len(values)), rel=1e-12
+    )
+
+
+def test_each_allowed_lag_counts():
+    """A series that repeats every five days is correlated at lag five only;
+    allowing four lags must not see it."""
+    from arbiter.evaluation.metrics import _newey_west_standard_error
+
+    values = np.asarray([0.3, -0.2, 0.1, -0.25, 0.05] * 8)
+
+    assert _newey_west_standard_error(values, 5) != pytest.approx(
+        _newey_west_standard_error(values, 4), rel=1e-6
+    )
+
+
+def test_lags_beyond_the_series_keep_the_bartlett_bandwidth():
+    """Textbook Newey-West: weights 1 - j/(L+1) with L as given; autocovariances
+    at lags with no pairs are zero. Worked for [0, 0, 0, 1, 1] with L = 10."""
+    from arbiter.evaluation.metrics import _newey_west_standard_error
+
+    assert _newey_west_standard_error(np.asarray([0, 0, 0, 1, 1.0]), 10) == pytest.approx(
+        0.153741, abs=1e-6
+    )
+
+
+def test_neighbouring_days_that_move_together_widen_the_error():
+    """Runs of five equal days, the shape overlapping five-session windows produce."""
+    runs = [0.2, -0.1, 0.15, -0.05, 0.1, -0.2]
+    daily = {f"{i:03d}": runs[i // 5] for i in range(30)}
+
+    summary = summarise_ic(daily, observations=3000, overlap_lags=4)
+
+    assert summary.standard_error > 1.5 * summary.independent_standard_error
+
+
+def test_days_that_alternate_do_not_narrow_the_error():
+    """Overlap can only correlate neighbours positively; a negative sample
+    autocorrelation is noise and must not buy a smaller error."""
+    daily = {f"{i:03d}": 0.1 * (-1) ** i for i in range(30)}
+    # Premise: on its own the overlap estimator would come out narrower.
+    from arbiter.evaluation.metrics import _newey_west_standard_error
+
+    values = np.asarray(list(daily.values()))
+    summary = summarise_ic(daily, observations=3000, overlap_lags=4)
+    assert _newey_west_standard_error(values, 4) < summary.independent_standard_error
+
+    assert summary.standard_error == summary.independent_standard_error
+
+
+def test_neighbours_are_taken_in_day_order_not_insertion_order():
+    """The same days supplied shuffled must give the same error."""
+    runs = [0.2, -0.1, 0.15, -0.05, 0.1, -0.2]
+    ordered = {f"{i:03d}": runs[i // 5] for i in range(30)}
+    shuffled = dict(sorted(ordered.items(), key=lambda item: (int(item[0]) * 7) % 30))
+    # Premise: the shuffle really changes the insertion order.
+    assert list(shuffled) != list(ordered)
+
+    assert summarise_ic(shuffled, 3000, overlap_lags=4) == summarise_ic(
+        ordered, 3000, overlap_lags=4
+    )
+
+
+def test_a_negative_lag_is_refused():
+    with pytest.raises(ValueError, match="overlap_lags"):
+        summarise_ic({"a": 0.1, "b": 0.2}, observations=10, overlap_lags=-1)

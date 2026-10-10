@@ -244,10 +244,14 @@ exist so far; the others arrive with the arms and portfolios that produce them.
   so a Form 4 carrying many transactions counts once.
 - **Information coefficient.** The Spearman rank correlation between forecast
   and abnormal return across a day's issuers, averaged over scored days with at
-  least ten issuers. Its standard error treats days as independent, which they
-  are not: most scored days are consecutive sessions while outcomes run five, so
-  adjacent days' windows overlap by up to four sessions, daily coefficients are
-  correlated, and the stated error is optimistic.
+  least ten issuers. Most scored days are consecutive sessions, and a window
+  closes five sessions after the one it opens on, so each day's window shares a
+  session with each of the next five and neighbouring coefficients can move
+  together. The standard error is the larger of one treating days as
+  independent and a Newey-West error allowing for that overlap. Newey-West is
+  biased downward at samples of a few dozen days, so it is never allowed to
+  narrow the error below the independent one; that choice errs towards finding
+  no skill, and the report names both.
 - **Brier skill** is reported against two constant forecasts. The headline
   reference is the up-rate of the refit that made each forecast, weighted by
   issuer-day: a constant a forecaster could have quoted before any outcome in

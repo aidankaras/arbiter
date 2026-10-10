@@ -16,6 +16,7 @@ import math
 from datetime import date
 
 from arbiter.arms.evaluate import Evaluation
+from arbiter.evaluation.metrics import ICSummary
 
 #: Width of the bar drawn beside each calibration band, in characters. A drawn
 #: comparison is read at a glance where two columns of decimals are not.
@@ -148,6 +149,16 @@ def _bias_direction(evaluation: Evaluation) -> str:
     )
 
 
+def _overlap_note(ic: ICSummary) -> str:
+    """How the standard error allowed for overlapping outcome windows, if it did."""
+    if ic.overlap_lags == 0:
+        return ""
+    return (
+        f", the larger of the error treating days as independent and one allowing "
+        f"for each day's outcome window overlapping the next {ic.overlap_lags}"
+    )
+
+
 def _verdict(evaluation: Evaluation) -> str:
     """State plainly whether the measurement supports a claim of skill.
 
@@ -166,8 +177,9 @@ def _verdict(evaluation: Evaluation) -> str:
     if not ic.is_significant:
         return (
             f"**No measurable skill.** The mean information coefficient is "
-            f"{ic.mean:+.4f} against a standard error of {ic.standard_error:.4f} "
-            f"(t = {ic.t_statistic:+.2f}), which is indistinguishable from zero at "
+            f"{ic.mean:+.4f} against a standard error of {ic.standard_error:.4f}"
+            f"{_overlap_note(ic)} (t = {ic.t_statistic:+.2f}), which is "
+            "indistinguishable from zero at "
             f"the conventional threshold. With {ic.days} scored days this is the "
             "expected outcome whether or not an edge exists; it is a statement "
             "about the sample, not evidence that no signal is there."
@@ -176,7 +188,7 @@ def _verdict(evaluation: Evaluation) -> str:
     direction = "positive" if ic.mean > 0 else "negative"
     return (
         f"**A {direction} information coefficient of {ic.mean:+.4f}** (standard "
-        f"error {ic.standard_error:.4f}, t = {ic.t_statistic:+.2f}) across "
+        f"error {ic.standard_error:.4f}{_overlap_note(ic)}, t = {ic.t_statistic:+.2f}) across "
         f"{ic.days} days. This clears the conventional two-standard-error "
         "threshold, which is a weak bar: it is one test on one sample, and the "
         "estimate should be expected to shrink as more days are added."
@@ -261,7 +273,7 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
 
     lines += [
         f"| **Mean** | **{_signed(ic.mean)}** |",
-        f"| Standard error | {ic.standard_error:.4f} |",
+        f"| Standard error | {ic.standard_error:.4f}{_overlap_note(ic)} |",
         f"| t | {_signed(ic.t_statistic, places=2)} |",
         "",
         "## Calibration",
