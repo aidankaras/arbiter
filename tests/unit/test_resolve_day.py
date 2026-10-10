@@ -249,3 +249,31 @@ def test_an_unusable_price_costs_only_its_own_event(bad: str):
     assert [label.accession_no for label in labels] == ["a-2"]
     assert [record["accession_no"] for record in unmeasurable] == ["a-1"]
     assert "exit_price" in unmeasurable[0]["reason"]
+
+
+def test_a_just_ripe_event_is_fetched_without_asking_for_the_current_session():
+    """The slack fetched past an event's close must not reach today.
+
+    2026-09-09 was refused by the feed during a backfill: its windows had closed,
+    but three slack sessions past the close put the request's end after today.
+    """
+    from datetime import timedelta
+
+    from arbiter.evaluation.resolution import window_closes_on
+    from arbiter.ingestion.market import newest_permitted_end
+
+    request = _request("a-1")
+    today = window_closes_on(request) + timedelta(days=1)
+    issuer = _series(3, ["100", "100", "101", "102", "103", "104", "110"])
+    benchmark = _series(3, ["50", "50", "50", "50", "50", "50", "52"])
+
+    def fetch(symbols, start: date, end: date) -> dict[str, list[Bar]]:
+        newest_permitted_end(today, end)  # the consolidated feed's own rule
+        return {"MO": issuer, "XLP": benchmark}
+
+    labels, unmeasurable = resolve_day(
+        [request], fetch, benchmark_for=lambda cik: "XLP", today=today
+    )
+
+    assert [label.accession_no for label in labels] == ["a-1"]
+    assert unmeasurable == []

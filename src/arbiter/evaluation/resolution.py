@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict
 
 from arbiter.evaluation.labels import InsufficientPriceDataError, abnormal_return
 from arbiter.ingestion.edgar import is_trading_day
-from arbiter.ingestion.market import Bar, tradeable_symbol
+from arbiter.ingestion.market import Bar, newest_permitted_end, tradeable_symbol
 from arbiter.ingestion.timestamps import SEC_TIMEZONE
 
 #: Sessions held per domain. Insider information resolves within a week; the
@@ -446,7 +446,13 @@ def resolve_day(
     # far cheaper than the requests it saves.
     windows = plan_price_windows(due)
     start = min(span[0] for span in windows.values())
-    end = max(span[1] for span in windows.values())
+    # Capped at the newest session the consolidated feed serves. The slack past
+    # each close would otherwise reach today for any event that ripened in the
+    # last few sessions, and the feed refuses the whole request. Every event
+    # here closed before today, so its exit session is still inside the window;
+    # only the insurance against an unlisted closure is given up, and an event
+    # it would have saved is recorded as unmeasurable rather than lost.
+    end = min(max(span[1] for span in windows.values()), newest_permitted_end(today))
 
     # Benchmarks are fetched apart from issuer tickers because the two carry
     # different consequences. A thinly traded issuer the service refuses costs
