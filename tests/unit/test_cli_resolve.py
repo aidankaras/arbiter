@@ -32,21 +32,39 @@ def test_the_refusal_names_the_domains_that_do_exist():
         assert domain in result.output
 
 
-def test_a_training_fraction_outside_the_unit_interval_is_refused_before_reading(
+def test_an_initial_fraction_outside_the_unit_interval_is_refused_before_reading(
     tmp_path: Path,
 ):
     """The same empty store is reported as empty when the fraction is valid.
 
     That pairing shows the refusal comes from the fraction, not from the store.
     """
-    refused = runner.invoke(
-        app, ["report", "--root", str(tmp_path), "--train-fraction", "-0.2"]
-    )
     accepted = runner.invoke(
-        app, ["report", "--root", str(tmp_path), "--train-fraction", "0.6"]
+        app, ["report", "--root", str(tmp_path), "--initial-fraction", "0.3"]
     )
-
-    assert refused.exit_code == 2
-    assert "strictly between 0 and 1" in refused.output
     assert accepted.exit_code == 1
     assert "no labelled" in accepted.output
+
+    for bad in ("-0.2", "0", "1", "1.5"):
+        refused = runner.invoke(
+            app, ["report", "--root", str(tmp_path), "--initial-fraction", bad]
+        )
+        assert refused.exit_code == 2, bad
+        assert "strictly between 0 and 1" in refused.output, bad
+
+
+def test_a_refit_cadence_below_one_is_refused_before_reading(tmp_path: Path):
+    accepted = runner.invoke(app, ["report", "--root", str(tmp_path), "--refit-every", "1"])
+    assert accepted.exit_code == 1
+    assert "no labelled" in accepted.output
+
+    for bad in ("0", "-3"):
+        refused = runner.invoke(app, ["report", "--root", str(tmp_path), "--refit-every", bad])
+        assert refused.exit_code == 2, bad
+        assert "at least 1" in refused.output, bad
+
+
+def test_the_removed_train_fraction_option_is_no_longer_accepted(tmp_path: Path):
+    result = runner.invoke(app, ["report", "--root", str(tmp_path), "--train-fraction", "0.6"])
+
+    assert result.exit_code == 2

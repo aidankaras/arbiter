@@ -1,7 +1,7 @@
 """Rendering a measurement as something a reader can check.
 
 A result is reported with the things needed to judge it, not just its headline:
-how many observations it rests on, over how many days, what the split was, and
+how many observations it rests on, over how many days, how it was fitted, and
 how far the estimate sits from zero relative to its own uncertainty. A single
 number without those is not a finding.
 
@@ -13,7 +13,6 @@ a new report, not an edit to the old one.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
 from datetime import date
 
 from arbiter.arms.evaluate import Evaluation
@@ -57,7 +56,9 @@ def _calibration_verdict(evaluation: Evaluation) -> str:
     skill = evaluation.brier_skill
     if math.isnan(skill):
         return ""
-    fitted = f"the fitting period's rate of {evaluation.fitted_base_rate:.1%}"
+    fitted = (
+        f"the up-rate each refit had observed, {evaluation.fitted_base_rate:.1%} on average"
+    )
     if abs(skill) < _NEGLIGIBLE_SKILL:
         return (
             f" The stated probabilities are worth no more than forecasting {fitted} "
@@ -80,8 +81,8 @@ def _calibration_verdict(evaluation: Evaluation) -> str:
 def _hindsight_skill(evaluation: Evaluation) -> str:
     """State the skill against the scored period's own rate, named as hindsight.
 
-    The fitted period's rate is the comparison a forecaster could have made;
-    the scored period's rate is stricter because it was not knowable when the
+    The rate observed by each refit is the comparison a forecaster could have
+    made; the scored period's rate is stricter because it was not knowable when the
     forecasts were made. Both are stated so neither reading is left to infer.
     """
     skill = evaluation.brier_skill_scored_rate
@@ -193,18 +194,6 @@ def _unlabelled(evaluation: Evaluation) -> str:
     )
 
 
-def _embargo_lines(embargoed: Sequence[date]) -> list[str]:
-    """Name the days withheld because fitted outcomes were still open on them."""
-    if not embargoed:
-        return []
-    named = ", ".join(day.isoformat() for day in embargoed)
-    return [
-        f"Withheld from both sides: {named}. Fitted outcomes were still open on",
-        "those days, so forecasts made then would share market moves with returns",
-        "the model had already been fitted on.",
-    ]
-
-
 def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
     """Render an evaluation as a Markdown report.
 
@@ -230,8 +219,10 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         "",
         "| | |",
         "|---|---|",
-        f"| Fitted on | {len(evaluation.train_days)} days, "
-        f"{evaluation.train_events:,} events |",
+        f"| Initial fitting window | {len(evaluation.initial_days)} days, "
+        f"{evaluation.initial_days[0]} to {evaluation.initial_days[-1]}; never scored |",
+        f"| Refits | {len(evaluation.folds)}, one per block of up to "
+        f"{max(len(fold.scored_days) for fold in evaluation.folds)} scored days |",
         f"| Scored on | {len(evaluation.test_days)} days, "
         f"{evaluation.test_events:,} labelled events{_unlabelled(evaluation)} |",
         # These two counts differ whenever a day carried too few distinct
@@ -239,18 +230,20 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         # in the verdict contradicting the day count in this table.
         f"| Days contributing a rank correlation | {ic.days} of {len(evaluation.test_days)} |",
         f"| Scored observations | {evaluation.test_issuer_days:,} issuer-days |",
-        f"| Fitting period | {evaluation.train_days[0]} to {evaluation.train_days[-1]} |",
         f"| Scoring period | {evaluation.test_days[0]} to {evaluation.test_days[-1]} |",
-        f"| Up-rate, fitting period | {evaluation.fitted_base_rate:.1%} of issuer-days "
-        "had a positive abnormal return |",
+        f"| Final refit | fitted on {len(evaluation.folds[-1].fit_days)} days, "
+        f"{evaluation.train_events:,} events |",
+        f"| Up-rate, refits | {evaluation.fitted_base_rate:.1%} of fitted issuer-days had a "
+        "positive abnormal return, averaged over scored issuer-days by the refit that "
+        "scored them |",
         f"| Up-rate, scoring period | {evaluation.base_rate:.1%} of issuer-days |",
         f"| Brier skill | {_signed(evaluation.brier_skill)} against forecasting "
-        "the fitting period's rate |",
+        "the up-rate of the refit that made each forecast |",
         f"| Brier skill, hindsight reference | {_signed(evaluation.brier_skill_scored_rate)} "
         "against forecasting the scoring period's own rate, not knowable in advance |",
         "",
-        "The split is chronological: every scored day falls after every fitted day.",
-        *_embargo_lines(evaluation.embargoed_days),
+        "Evaluation is walk-forward: each block of scored days is forecast by a model",
+        "fitted only on days whose outcomes had closed before the block's first day.",
         "Discrimination is credited once per issuer per day, because several insiders",
         "at one company on one day resolve to a single outcome.",
         "",
@@ -289,7 +282,9 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         "",
         "## Fitted weights",
         "",
-        "On the standardised scale, so magnitudes are comparable across features.",
+        "From the final refit, which saw the most data; earlier refits' weights are",
+        "not shown. On the standardised scale, so magnitudes are comparable across",
+        "features.",
         "A weight is what the model leaned on, not evidence that the characteristic",
         "predicts anything on its own.",
         "",

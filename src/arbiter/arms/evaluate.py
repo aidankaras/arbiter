@@ -1,10 +1,18 @@
 """Measuring an arm against the outcomes it did not see.
 
-The split between what a model is fitted on and what it is judged by is by
-date, never at random. A random split would place events from the same day on
-both sides, and since events filed on one day share a market, the model would
-be scored partly on days it had already been shown — reporting as skill what is
+What a model is fitted on and what it is judged by are separated by date,
+never at random. A random split would place events from the same day on both
+sides, and since events filed on one day share a market, the model would be
+scored partly on days it had already been shown — reporting as skill what is
 partly memory.
+
+The separation is walk-forward. After an initial fitting window, the remaining
+days are scored in consecutive blocks, each forecast by a model refitted on
+every earlier day whose outcomes had closed before the block began. A single
+chronological split put the whole verdict on one cut point: two reasonable cuts
+of the same store gave t = 0.57 and t = 2.93. Walk-forward scores every day
+after the initial window and lets the training set grow as outcomes realise,
+the way a forecaster running live would.
 
 Discrimination is scored one issuer per day rather than one filing per day.
 Several insiders at one company on one day produce several events that resolve
@@ -14,6 +22,7 @@ shrink the apparent standard error accordingly.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -33,8 +42,12 @@ from arbiter.evaluation.metrics import (
 )
 from arbiter.evaluation.resolution import sessions_after
 
-#: The share of days used to fit. The remainder is held out and scored once.
-TRAIN_FRACTION = 0.6
+#: The share of populated days in the initial fitting window. Those days are
+#: fitted on and never scored: the first forecast needs something to rest on.
+INITIAL_FRACTION = 0.3
+
+#: Scored days per refit, counted in populated stored days rather than sessions.
+REFIT_EVERY = 10
 
 
 @dataclass(frozen=True)
@@ -55,25 +68,45 @@ class DayOfEvents:
 
 
 @dataclass(frozen=True)
+class Fold:
+    """One refit and the block of days it forecast."""
+
+    #: Days the model was fitted on: every populated day before the block whose
+    #: outcomes had closed by the block's first day.
+    fit_days: list[date]
+    scored_days: list[date]
+    #: Share of fitted issuer-days that rose; the feasible reference for the
+    #: block's Brier skill.
+    fitted_base_rate: float
+    train_events: int
+
+
+@dataclass(frozen=True)
 class Evaluation:
     """What an arm scored on days it was not fitted on."""
 
     ic: ICSummary
     daily_ic: dict[date, float]
     calibration: list[CalibrationBin]
-    #: Against forecasting the fitted period's rate: the constant a forecaster
-    #: could have quoted before any scored outcome was known.
+    #: Against forecasting the base rate of the model that made each forecast:
+    #: the constant a forecaster could have quoted before any scored outcome in
+    #: that block was known.
     brier_skill: float
     #: Against forecasting the scored period's own rate, which was not knowable
     #: in advance — a stricter reference than any feasible constant.
     brier_skill_scored_rate: float
-    #: Share of fitted issuer-days that rose.
+    #: The reference rate averaged over scored issuer-days: each fold's fitted
+    #: up-rate, weighted by the issuer-days that fold scored. This is the mean of
+    #: the per-observation references `brier_skill` is measured against.
     fitted_base_rate: float
     #: Share of scored issuer-days that rose.
     base_rate: float
-    train_days: list[date]
+    #: Days fitted on before the first forecast and never scored.
+    initial_days: list[date]
+    #: Every scored day, in order: all populated days after the initial window.
     test_days: list[date]
-    embargoed_days: list[date]
+    folds: list[Fold]
+    #: Events in the last fold's fitting set.
     train_events: int
     test_events: int
     #: Events on scored days dropped for want of an outcome, each recorded as
@@ -86,6 +119,8 @@ class Evaluation:
     #: rate are pooled over. Larger than `test_issuer_days` whenever a scored
     #: day had too few issuers to rank.
     pooled_issuer_days: int
+    #: The last fold's model, which saw the most data. Earlier folds' weights
+    #: are not kept; the report labels this table as the final refit's.
     coefficients: dict[str, float]
 
 
@@ -213,65 +248,12 @@ def _issuer_day_weights(day: DayOfEvents) -> list[float]:
     return [1.0 / rows_per_issuer[issuer] for issuer in day.issuers]
 
 
-def split_days(
-    days: Sequence[date], train_fraction: float = TRAIN_FRACTION, *, embargo_sessions: int
-) -> tuple[list[date], list[date]]:
-    """Divide days chronologically into what is fitted on and what is scored.
-
-    `embargo_sessions` is how many sessions past a fitted day its outcomes can
-    stay open. Scored days on or before that many sessions after the last fitted
-    day are dropped: their forecasts would be made while fitted outcomes were
-    still unrealised, and both would share the same market moves. For a
-    five-session horizon entered at the next open, that is six.
-
-    Raises:
-        ValueError: `train_fraction` is not strictly between 0 and 1. A
-            negative one would slice from the end and fit on most of the days.
-        InsufficientObservationsError: the split would leave fewer than one
-            training day or fewer than two test days, the latter being the
-            minimum from which a spread across days can be estimated.
-    """
-    if not 0 < train_fraction < 1:
-        msg = f"train_fraction must be strictly between 0 and 1, not {train_fraction}"
-        raise ValueError(msg)
-    ordered = sorted(days)
-    cut = int(len(ordered) * train_fraction)
-    train, test = ordered[:cut], ordered[cut:]
-    if train and embargo_sessions > 0:
-        realised_by = sessions_after(train[-1], embargo_sessions)
-        test = [day for day in test if day > realised_by]
-
-    if not train or len(test) < 2:
-        msg = (
-            f"{len(ordered)} days split into {len(train)} for fitting and "
-            f"{len(test)} for scoring; at least 1 and 2 are needed"
-        )
-        raise InsufficientObservationsError(msg)
-    return train, test
-
-
-def evaluate_baseline(
-    days: Sequence[DayOfEvents],
-    train_fraction: float = TRAIN_FRACTION,
-    *,
-    embargo_sessions: int,
-) -> Evaluation:
-    """Fit the baseline on the earlier days and score it on the later ones.
-
-    Raises:
-        InsufficientObservationsError: too few days to split, or no labelled
-            events on either side of the split.
-    """
-    populated = [day for day in days if len(day) > 0]
-    train_days, test_days = split_days(
-        [day.day for day in populated], train_fraction, embargo_sessions=embargo_sessions
-    )
-    embargoed_days = [day.day for day in populated if train_days[-1] < day.day < test_days[0]]
-
-    by_day = {day.day: day for day in populated}
-    train = [by_day[day] for day in train_days]
-    test = [by_day[day] for day in test_days]
-
+def _fit_fold(
+    by_day: dict[date, DayOfEvents],
+    fit_days: list[date],
+) -> tuple[FittedBaseline, float, int]:
+    """Fit on `fit_days`; return the model, its issuer-day up-rate and event count."""
+    train = [by_day[day] for day in fit_days]
     train_features = [row for day in train for row in day.features]
     train_outcomes = [outcome for day in train for outcome in day.outcomes]
     # Scoring credits each issuer once per day, so fitting does too: every row
@@ -280,64 +262,170 @@ def evaluate_baseline(
     # single-line filing, and the model would be fitted to a different
     # population from the one it is judged on.
     train_weights = [weight for day in train for weight in _issuer_day_weights(day)]
-    model: FittedBaseline = fit_baseline(train_features, train_outcomes, train_weights)
+    model = fit_baseline(train_features, train_outcomes, train_weights)
     fitted_outcomes = _issuer_day_outcomes(train)
-    fitted_base_rate = sum(fitted_outcomes) / len(fitted_outcomes)
+    return model, sum(fitted_outcomes) / len(fitted_outcomes), len(train_features)
+
+
+def forecast_walk_forward(
+    days: Sequence[DayOfEvents],
+    *,
+    embargo_sessions: int,
+    initial_fraction: float = INITIAL_FRACTION,
+    refit_every: int = REFIT_EVERY,
+) -> list[tuple[Fold, FittedBaseline, dict[date, list[float]]]]:
+    """Refit the baseline ahead of each block of days and forecast the block.
+
+    The first `ceil(n * initial_fraction)` populated days form the initial
+    window and are never scored. Every later populated day is scored, in
+    consecutive blocks of `refit_every`. A block is forecast by a model fitted on
+    each populated day `d` before the block with `sessions_after(d,
+    embargo_sessions) < block[0]`: outcomes of a fitted day can stay open for
+    `embargo_sessions` sessions, and until they close they share market moves
+    with the block's returns. For a five-session horizon entered at the next
+    open, the embargo is six. Training expands to include earlier scored blocks.
+
+    Returns each fold, its model, and the per-row forecasts of every scored day.
+
+    Raises:
+        ValueError: `initial_fraction` is not strictly between 0 and 1 (a
+            negative one would slice from the end and fit on most of the days),
+            or `refit_every` is below 1.
+        InsufficientObservationsError: fewer than one initial day or two scored
+            days, the latter being the minimum from which a spread across days
+            can be estimated; or a block has no fitted day whose outcomes had
+            closed, which an embargo longer than the initial window causes.
+    """
+    if not 0 < initial_fraction < 1:
+        msg = f"initial_fraction must be strictly between 0 and 1, not {initial_fraction}"
+        raise ValueError(msg)
+    if refit_every < 1:
+        msg = f"refit_every must be at least 1, not {refit_every}"
+        raise ValueError(msg)
+
+    by_day = {day.day: day for day in days if len(day) > 0}
+    ordered = sorted(by_day)
+    initial_count = math.ceil(len(ordered) * initial_fraction)
+    scored = ordered[initial_count:]
+    if initial_count < 1 or len(scored) < 2:
+        msg = (
+            f"{len(ordered)} days leave {initial_count} for the initial fit and "
+            f"{len(scored)} for scoring; at least 1 and 2 are needed"
+        )
+        raise InsufficientObservationsError(msg)
+
+    results: list[tuple[Fold, FittedBaseline, dict[date, list[float]]]] = []
+    for offset in range(0, len(scored), refit_every):
+        block = scored[offset : offset + refit_every]
+        fit_days = [
+            day
+            for day in ordered
+            if day < block[0] and sessions_after(day, embargo_sessions) < block[0]
+        ]
+        if not fit_days:
+            msg = (
+                f"no day had closed its outcomes by {block[0]}: an embargo of "
+                f"{embargo_sessions} sessions leaves nothing to fit on"
+            )
+            raise InsufficientObservationsError(msg)
+        model, fitted_rate, train_events = _fit_fold(by_day, fit_days)
+        forecasts = {day: forecast(model, by_day[day].features) for day in block}
+        fold = Fold(
+            fit_days=fit_days,
+            scored_days=block,
+            fitted_base_rate=fitted_rate,
+            train_events=train_events,
+        )
+        results.append((fold, model, forecasts))
+    return results
+
+
+def evaluate_baseline(
+    days: Sequence[DayOfEvents],
+    *,
+    embargo_sessions: int,
+    initial_fraction: float = INITIAL_FRACTION,
+    refit_every: int = REFIT_EVERY,
+) -> Evaluation:
+    """Score the baseline walk-forward; see `forecast_walk_forward` for the rule.
+
+    Raises:
+        ValueError: as `forecast_walk_forward`.
+        InsufficientObservationsError: as `forecast_walk_forward`, or no
+            labelled events on the scored days.
+    """
+    blocks = forecast_walk_forward(
+        days,
+        embargo_sessions=embargo_sessions,
+        initial_fraction=initial_fraction,
+        refit_every=refit_every,
+    )
+    by_day = {day.day: day for day in days if len(day) > 0}
+    folds = [fold for fold, _, _ in blocks]
+    test_days = [day for fold in folds for day in fold.scored_days]
+    initial_days = sorted(by_day)[: len(by_day) - len(test_days)]
 
     daily: dict[date, float] = {}
     pooled_probabilities: list[float] = []
     pooled_outcomes: list[int] = []
+    # The block's own fitted rate, repeated for each issuer-day it scored: the
+    # constant a forecaster refitting on the same schedule could have quoted.
+    references: list[float] = []
     issuer_days = 0
     # Counted over every day from the first scored one, including days on which
-    # nothing resolved: those never enter the split, but their events were filed
+    # nothing resolved: those never enter the walk, but their events were filed
     # in the scoring period all the same.
     unlabelled = sum(day.unlabelled for day in days if day.day >= test_days[0])
-    # Kept apart from the pooled counts, which are now issuer-level: the report
+    # Kept apart from the pooled counts, which are issuer-level: the report
     # states both, and conflating them would understate the data behind a run.
     scored_events = 0
 
-    for day in test:
-        probabilities = forecast(model, day.features)
-        issuer_forecasts, issuer_returns = _by_issuer(probabilities, day)
-        scored_events += len(day)
+    for fold, _, block_forecasts in blocks:
+        for scored_day in fold.scored_days:
+            day = by_day[scored_day]
+            issuer_forecasts, issuer_returns = _by_issuer(block_forecasts[scored_day], day)
+            scored_events += len(day)
 
-        # Calibration, Brier skill and the base rate are pooled at the issuer-day
-        # level, the same unit the information coefficient is credited at. Pooled
-        # per filing they counted one outcome once per transaction row — a single
-        # Form 4 carried forty-four on a measured day — so the reliability curve's
-        # counts read as independent observations while being copies of a few.
-        pooled_probabilities.extend(issuer_forecasts)
-        pooled_outcomes.extend(_rose(issuer_returns))
-        # A day with a handful of issuers produces a rank correlation that is
-        # mostly noise; including it would add variance to the average without
-        # adding information.
-        if len(issuer_forecasts) >= _MIN_PER_DAY:
-            daily[day.day] = information_coefficient(issuer_forecasts, issuer_returns)
-            # Counted only for days that contribute a coefficient. Accumulating
-            # it for every scored day would report a sample larger than the one
-            # the estimate rests on, beside a line saying how many days were
-            # excluded — inviting the reader to divide one by the other.
-            issuer_days += len(issuer_forecasts)
+            # Calibration, Brier skill and the base rate are pooled at the
+            # issuer-day level, the same unit the information coefficient is
+            # credited at. Pooled per filing they counted one outcome once per
+            # transaction row — a single Form 4 carried forty-four on a measured
+            # day — so the reliability curve's counts read as independent
+            # observations while being copies of a few.
+            pooled_probabilities.extend(issuer_forecasts)
+            pooled_outcomes.extend(_rose(issuer_returns))
+            references.extend([fold.fitted_base_rate] * len(issuer_forecasts))
+            # A day with a handful of issuers produces a rank correlation that
+            # is mostly noise; including it would add variance to the average
+            # without adding information.
+            if len(issuer_forecasts) >= _MIN_PER_DAY:
+                daily[day.day] = information_coefficient(issuer_forecasts, issuer_returns)
+                # Counted only for days that contribute a coefficient.
+                # Accumulating it for every scored day would report a sample
+                # larger than the one the estimate rests on, beside a line
+                # saying how many days were excluded — inviting the reader to
+                # divide one by the other.
+                issuer_days += len(issuer_forecasts)
 
     return Evaluation(
         ic=summarise_ic(daily, observations=issuer_days),
         daily_ic=daily,
         calibration=calibration_curve(pooled_probabilities, pooled_outcomes),
         brier_skill=brier_skill_score(
-            pooled_probabilities, pooled_outcomes, reference_rate=fitted_base_rate
+            pooled_probabilities, pooled_outcomes, reference_rate=references
         ),
         brier_skill_scored_rate=brier_skill_score(pooled_probabilities, pooled_outcomes),
-        fitted_base_rate=fitted_base_rate,
+        fitted_base_rate=sum(references) / len(references),
         base_rate=sum(pooled_outcomes) / len(pooled_outcomes),
-        train_days=train_days,
+        initial_days=initial_days,
         test_days=test_days,
-        embargoed_days=embargoed_days,
-        train_events=len(train_features),
+        folds=folds,
+        train_events=folds[-1].train_events,
         test_events=scored_events,
         test_events_unlabelled=unlabelled,
         test_issuer_days=issuer_days,
         pooled_issuer_days=len(pooled_outcomes),
-        coefficients=model.coefficients(),
+        coefficients=blocks[-1][1].coefficients(),
     )
 
 

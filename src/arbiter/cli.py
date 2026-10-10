@@ -16,7 +16,8 @@ from pydantic import ValidationError
 
 from arbiter import __version__
 from arbiter.arms.evaluate import (
-    TRAIN_FRACTION,
+    INITIAL_FRACTION,
+    REFIT_EVERY,
     LabelCoverageError,
     evaluate_baseline,
     load_days,
@@ -190,19 +191,25 @@ def report(
     domain: str = "insider",
     root: str = "data/events",
     out: str = "reports",
-    train_fraction: float = TRAIN_FRACTION,
+    initial_fraction: float = INITIAL_FRACTION,
+    refit_every: int = REFIT_EVERY,
 ) -> None:
     """Fit the baseline arm on the stored history and write its measurement.
 
-    Reads every day the store holds labels for, fits on the earlier fraction of
-    them, and scores the rest. The report is written to `reports/` so that what
+    Reads every day the store holds labels for, fits on the first
+    `--initial-fraction` of them, then scores the rest walk-forward, refitting
+    every `--refit-every` scored days. The report is written to `reports/` so that what
     was claimed at a given commit stays inspectable; recomputing against more
     data produces a new report rather than an edit to the old one.
     """
-    if not 0 < train_fraction < 1:
+    if not 0 < initial_fraction < 1:
         typer.echo(
-            f"--train-fraction must be strictly between 0 and 1, not {train_fraction}", err=True
+            f"--initial-fraction must be strictly between 0 and 1, not {initial_fraction}",
+            err=True,
         )
+        raise typer.Exit(code=2)
+    if refit_every < 1:
+        typer.echo(f"--refit-every must be at least 1, not {refit_every}", err=True)
         raise typer.Exit(code=2)
 
     store = Path(root)
@@ -218,7 +225,10 @@ def report(
         # An outcome enters at the session after its filing and closes HORIZONS
         # sessions later, so it can stay open that many sessions plus one.
         evaluation = evaluate_baseline(
-            loaded, train_fraction, embargo_sessions=HORIZONS[domain] + 1
+            loaded,
+            embargo_sessions=HORIZONS[domain] + 1,
+            initial_fraction=initial_fraction,
+            refit_every=refit_every,
         )
     except UnsupportedDomainError as exc:
         typer.echo(f"the baseline arm cannot score '{domain}': {exc}", err=True)

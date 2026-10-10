@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ElementTree
 from dataclasses import replace
 from datetime import date
 
-from arbiter.arms.evaluate import Evaluation
+from arbiter.arms.evaluate import Evaluation, Fold
 from arbiter.evaluation.figure import render_baseline_figure
 from arbiter.evaluation.metrics import CalibrationBin, ICSummary
 
@@ -39,9 +39,16 @@ def _evaluation() -> Evaluation:
         brier_skill_scored_rate=-0.001,
         fitted_base_rate=0.45,
         base_rate=0.43,
-        train_days=[date(2026, 3, 2), date(2026, 6, 1)],
+        initial_days=[date(2026, 3, 2), date(2026, 6, 1)],
         test_days=sorted(DAILY),
-        embargoed_days=[],
+        folds=[
+            Fold(
+                fit_days=[date(2026, 3, 2), date(2026, 6, 1)],
+                scored_days=sorted(DAILY),
+                fitted_base_rate=0.45,
+                train_events=3000,
+            )
+        ],
         train_events=3000,
         test_events=1300,
         test_events_unlabelled=0,
