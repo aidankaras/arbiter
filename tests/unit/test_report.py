@@ -138,6 +138,13 @@ def test_the_final_refit_is_named_as_the_source_of_the_weights():
     assert "| Final refit | fitted on 3 days, 9,000 events |" in rendered
 
 
+def test_the_first_refit_is_sized_beside_the_final_one():
+    """The initial window row alone would imply the first model saw all of it."""
+    rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
+
+    assert "| First refit | fitted on 2 days, 7,000 events" in rendered
+
+
 def test_calibration_bands_are_rendered_with_their_counts():
     rendered = render_baseline_report(_evaluation(0.004, 0.011, 0.36), GENERATED)
 

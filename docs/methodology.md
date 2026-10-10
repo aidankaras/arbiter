@@ -225,12 +225,19 @@ diverge says more than either one's headline number.
 Of these, only the information coefficient, the reliability table and Brier skill
 exist so far; the others arrive with the arms and portfolios that produce them.
 
-- **Chronological split with an embargo.** The earlier 60% of stored days are
-  fitted on and the rest scored. An insider outcome enters at the session after
-  its filing and closes five sessions later, so scored days within six sessions
-  of the last fitted day are withheld: a forecast made then would share market
-  moves with outcomes the model was fitted on. The report names the withheld
-  days.
+- **Walk-forward, with closure judged per event.** The earliest 30% of stored
+  days form an initial fitting window that is never scored. The remaining days
+  are all scored, in consecutive blocks of ten. Each block is forecast by a model
+  refitted on every earlier event whose outcome window had closed before the
+  block's first day, so training grows to include earlier scored blocks. Closure
+  is read from each event's stored label (its exit session), not counted from the
+  filing day: a filing accepted late in a day, or a window spanning a gap in
+  the price sessions, closes later than a count from the partition day says, and
+  one day's events can close at different sessions. A single chronological
+  split was used earlier and put the verdict on one cut point; two reasonable
+  cuts of the same store gave t = 0.57 and t = 2.93. The report states the
+  initial window, the number of refits, the size of the first and final refits,
+  and the scored period.
 - **One observation per issuer per day, on both sides.** Several insiders at
   one company on one day resolve to a single outcome. Scoring averages their
   forecasts into one; fitting weights each row by its share of the issuer-day,
@@ -241,12 +248,13 @@ exist so far; the others arrive with the arms and portfolios that produce them.
   days are four sessions apart while outcomes run five, so adjacent days' windows
   overlap by a session and the stated error is somewhat optimistic.
 - **Brier skill** is reported against two constant forecasts. The headline
-  reference is the fitting period's up-rate, weighted by issuer-day: the
-  constant a forecaster could have quoted before any scored outcome was known.
-  The second is the scored period's own up-rate, which was not knowable in
-  advance and is the best constant in hindsight, so skill against it is always
-  the lower of the two. Calibration and both skills are pooled over every
-  scored issuer-day, including days too thin to rank.
+  reference is the up-rate of the refit that made each forecast, weighted by
+  issuer-day: a constant a forecaster could have quoted before any outcome in
+  that block was known. The second is the scored period's own up-rate, which
+  was not knowable in advance and is the best constant in hindsight, so skill
+  against it is never above the headline figure. Calibration and both skills are
+  pooled over every scored issuer-day, including days too thin to rank. The
+  fitted weights shown in the report are the final refit's.
 - **Label coverage.** A scored day's events without an outcome are dropped and
   counted, and each must carry an exclusion recorded by the labeling pass. A
   day with an unlabelled event and no record, or a label for an event the day

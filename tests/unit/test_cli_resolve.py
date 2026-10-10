@@ -6,11 +6,15 @@ the project does not measure has to be refused at the boundary, because the next
 step reads that domain's partition and would report a missing day instead.
 """
 
+from datetime import date
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
+from arbiter.arms.evaluate import DayOfEvents
 from arbiter.cli import app
+from arbiter.evaluation.metrics import InsufficientObservationsError
 from arbiter.evaluation.resolution import HORIZONS
 
 runner = CliRunner()
@@ -68,3 +72,29 @@ def test_the_removed_train_fraction_option_is_no_longer_accepted(tmp_path: Path)
     result = runner.invoke(app, ["report", "--root", str(tmp_path), "--train-fraction", "0.6"])
 
     assert result.exit_code == 2
+
+
+def test_too_few_days_to_evaluate_is_reported_with_a_remedy_not_a_traceback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    day = date(2026, 6, 1)
+    one_day = DayOfEvents(
+        day=day,
+        features=[{"is_purchase": 1.0}],
+        outcomes=[1],
+        returns=[0.01],
+        issuers=[1],
+        exit_sessions=[day],
+    )
+    monkeypatch.setattr("arbiter.cli.stored_days", lambda *_: [day])
+    monkeypatch.setattr("arbiter.cli.load_days", lambda *_: [one_day])
+
+    result = runner.invoke(
+        app, ["report", "--root", str(tmp_path), "--initial-fraction", "0.3"]
+    )
+
+    assert result.exit_code == 1
+    assert not isinstance(result.exception, InsufficientObservationsError)
+    assert "1 populated days are stored" in result.output
+    assert "at least 3 are needed" in result.output
+    assert "arbiter backfill" in result.output

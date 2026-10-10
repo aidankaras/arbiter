@@ -6,6 +6,7 @@ function that is independently testable without the CLI.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
@@ -18,6 +19,7 @@ from arbiter import __version__
 from arbiter.arms.evaluate import (
     INITIAL_FRACTION,
     REFIT_EVERY,
+    DayOfEvents,
     LabelCoverageError,
     evaluate_baseline,
     load_days,
@@ -26,6 +28,7 @@ from arbiter.arms.evaluate import (
 from arbiter.arms.features import UnsupportedDomainError
 from arbiter.config import Settings, get_settings
 from arbiter.evaluation.figure import render_baseline_figure
+from arbiter.evaluation.metrics import InsufficientObservationsError
 from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.resolution import HORIZONS, WindowsStillOpenError, resolve_stored_day
 from arbiter.ingestion.backfill import backfill as run_backfill
@@ -186,6 +189,14 @@ def build_packets(
             typer.echo(f"  ... and {len(excluded) - 10} more")
 
 
+def _days_needed(initial_fraction: float) -> int:
+    """Return the fewest populated days that leave an initial fit and two scored days."""
+    needed = 3
+    while needed - math.ceil(needed * initial_fraction) < 2:
+        needed += 1
+    return needed
+
+
 @app.command()
 def report(
     domain: str = "insider",
@@ -218,15 +229,13 @@ def report(
         typer.echo(f"no labelled {domain} days under {root}; run `arbiter backfill`", err=True)
         raise typer.Exit(code=1)
 
+    loaded: list[DayOfEvents] = []
     try:
         # `load_days` is what raises: features are built as each day is read,
         # so the call has to sit inside the handler rather than before it.
         loaded = load_days(store, domain, days)
-        # An outcome enters at the session after its filing and closes HORIZONS
-        # sessions later, so it can stay open that many sessions plus one.
         evaluation = evaluate_baseline(
             loaded,
-            embargo_sessions=HORIZONS[domain] + 1,
             initial_fraction=initial_fraction,
             refit_every=refit_every,
         )
@@ -235,6 +244,17 @@ def report(
         raise typer.Exit(code=2) from None
     except LabelCoverageError as exc:
         typer.echo(f"refusing to score a day whose labels are stale: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    except InsufficientObservationsError as exc:
+        populated = sum(1 for day in loaded if len(day) > 0)
+        typer.echo(
+            f"cannot evaluate: {exc}. {populated} populated days are stored; at "
+            f"--initial-fraction {initial_fraction} at least "
+            f"{_days_needed(initial_fraction)} are needed. Collect more days with "
+            "`arbiter backfill`, or change --initial-fraction: a larger window "
+            "leaves fewer days to score, a smaller one leaves fewer to fit on.",
+            err=True,
+        )
         raise typer.Exit(code=1) from None
 
     # Both are rendered before either is written, so a failure in one cannot

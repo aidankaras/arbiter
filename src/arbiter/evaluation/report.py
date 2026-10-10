@@ -231,6 +231,9 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         f"| Days contributing a rank correlation | {ic.days} of {len(evaluation.test_days)} |",
         f"| Scored observations | {evaluation.test_issuer_days:,} issuer-days |",
         f"| Scoring period | {evaluation.test_days[0]} to {evaluation.test_days[-1]} |",
+        f"| First refit | fitted on {len(evaluation.folds[0].fit_days)} days, "
+        f"{evaluation.folds[0].train_events:,} events: only the initial-window events "
+        "whose outcomes had closed |",
         f"| Final refit | fitted on {len(evaluation.folds[-1].fit_days)} days, "
         f"{evaluation.train_events:,} events |",
         f"| Up-rate, refits | {evaluation.fitted_base_rate:.1%} of fitted issuer-days had a "
@@ -243,7 +246,7 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         "against forecasting the scoring period's own rate, not knowable in advance |",
         "",
         "Evaluation is walk-forward: each block of scored days is forecast by a model",
-        "fitted only on days whose outcomes had closed before the block's first day.",
+        "fitted only on events whose outcomes had closed before the block's first day.",
         "Discrimination is credited once per issuer per day, because several insiders",
         "at one company on one day resolve to a single outcome.",
         "",

@@ -8,7 +8,7 @@ partly memory.
 
 The separation is walk-forward. After an initial fitting window, the remaining
 days are scored in consecutive blocks, each forecast by a model refitted on
-every earlier day whose outcomes had closed before the block began. A single
+every earlier event whose outcome had closed before the block began. A single
 chronological split put the whole verdict on one cut point: two reasonable cuts
 of the same store gave t = 0.57 and t = 2.93. Walk-forward scores every day
 after the initial window and lets the training set grow as outcomes realise,
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 
@@ -40,7 +40,6 @@ from arbiter.evaluation.metrics import (
     information_coefficient,
     summarise_ic,
 )
-from arbiter.evaluation.resolution import sessions_after
 
 #: The share of populated days in the initial fitting window. Those days are
 #: fitted on and never scored: the first forecast needs something to rest on.
@@ -59,6 +58,11 @@ class DayOfEvents:
     outcomes: list[int]
     returns: list[float]
     issuers: list[int]
+    #: The session each event's outcome window closed on, from its stored label.
+    #: Taken from the label rather than inferred from the filing day: a filing
+    #: accepted late in a day, or a window crossing a gap in the price
+    #: sessions, closes later than a calendar count from the partition day says.
+    exit_sessions: list[date]
     #: Events filed that day that resolved to no outcome, every one of them
     #: recorded as an exclusion by the labeling pass.
     unlabelled: int = 0
@@ -71,8 +75,9 @@ class DayOfEvents:
 class Fold:
     """One refit and the block of days it forecast."""
 
-    #: Days the model was fitted on: every populated day before the block whose
-    #: outcomes had closed by the block's first day.
+    #: Days contributing at least one fitted event: those filed before the
+    #: block whose outcome had closed by the block's first day. A day whose
+    #: events closed at different sessions may be fitted in part.
     fit_days: list[date]
     scored_days: list[date]
     #: Share of fitted issuer-days that rose; the feasible reference for the
@@ -160,8 +165,11 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
     # Several rows of one filing share an accession number and resolve to the
     # same outcome, so the first is representative rather than arbitrary.
     outcomes: dict[str, float] = {}
+    exits: dict[str, date] = {}
     for label in read_events(root, f"labels-{domain}", day):
-        outcomes.setdefault(str(label["accession_no"]), float(label["abnormal_return"]))
+        accession = str(label["accession_no"])
+        outcomes.setdefault(accession, float(label["abnormal_return"]))
+        exits.setdefault(accession, label["exit_session"])
 
     # Features are computed over the whole day and only then narrowed to the
     # events that resolved. One feature counts the insiders who had filed for
@@ -191,7 +199,13 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
     unlabelled = len(events) - len(kept)
     if not kept:
         return DayOfEvents(
-            day=day, features=[], outcomes=[], returns=[], issuers=[], unlabelled=unlabelled
+            day=day,
+            features=[],
+            outcomes=[],
+            returns=[],
+            issuers=[],
+            exit_sessions=[],
+            unlabelled=unlabelled,
         )
 
     returns = [outcomes[str(events[index]["accession_no"])] for index in kept]
@@ -201,6 +215,7 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
         outcomes=[int(value > 0) for value in returns],
         returns=returns,
         issuers=[int(events[index]["cik"]) for index in kept],
+        exit_sessions=[exits[str(events[index]["accession_no"])] for index in kept],
         unlabelled=unlabelled,
     )
 
@@ -248,12 +263,23 @@ def _issuer_day_weights(day: DayOfEvents) -> list[float]:
     return [1.0 / rows_per_issuer[issuer] for issuer in day.issuers]
 
 
-def _fit_fold(
-    by_day: dict[date, DayOfEvents],
-    fit_days: list[date],
-) -> tuple[FittedBaseline, float, int]:
-    """Fit on `fit_days`; return the model, its issuer-day up-rate and event count."""
-    train = [by_day[day] for day in fit_days]
+def _closed_before(day: DayOfEvents, cutoff: date) -> DayOfEvents | None:
+    """Return the events of `day` whose outcomes closed before `cutoff`, if any."""
+    kept = [index for index, exit_ in enumerate(day.exit_sessions) if exit_ < cutoff]
+    if not kept:
+        return None
+    return replace(
+        day,
+        features=[day.features[i] for i in kept],
+        outcomes=[day.outcomes[i] for i in kept],
+        returns=[day.returns[i] for i in kept],
+        issuers=[day.issuers[i] for i in kept],
+        exit_sessions=[day.exit_sessions[i] for i in kept],
+    )
+
+
+def _fit_fold(train: Sequence[DayOfEvents]) -> tuple[FittedBaseline, float, int]:
+    """Fit on `train`; return the model, its issuer-day up-rate and event count."""
     train_features = [row for day in train for row in day.features]
     train_outcomes = [outcome for day in train for outcome in day.outcomes]
     # Scoring credits each issuer once per day, so fitting does too: every row
@@ -270,7 +296,6 @@ def _fit_fold(
 def forecast_walk_forward(
     days: Sequence[DayOfEvents],
     *,
-    embargo_sessions: int,
     initial_fraction: float = INITIAL_FRACTION,
     refit_every: int = REFIT_EVERY,
 ) -> list[tuple[Fold, FittedBaseline, dict[date, list[float]]]]:
@@ -279,11 +304,11 @@ def forecast_walk_forward(
     The first `ceil(n * initial_fraction)` populated days form the initial
     window and are never scored. Every later populated day is scored, in
     consecutive blocks of `refit_every`. A block is forecast by a model fitted on
-    each populated day `d` before the block with `sessions_after(d,
-    embargo_sessions) < block[0]`: outcomes of a fitted day can stay open for
-    `embargo_sessions` sessions, and until they close they share market moves
-    with the block's returns. For a five-session horizon entered at the next
-    open, the embargo is six. Training expands to include earlier scored blocks.
+    each event filed before the block's first day whose outcome window had
+    closed before it, judged per event from the stored label's exit session.
+    Until a window closes its return shares market moves with the block's
+    returns, so fitting on it would let the model see part of what it forecasts.
+    Training expands to include earlier scored blocks.
 
     Returns each fold, its model, and the per-row forecasts of every scored day.
 
@@ -293,8 +318,8 @@ def forecast_walk_forward(
             or `refit_every` is below 1.
         InsufficientObservationsError: fewer than one initial day or two scored
             days, the latter being the minimum from which a spread across days
-            can be estimated; or a block has no fitted day whose outcomes had
-            closed, which an embargo longer than the initial window causes.
+            can be estimated; or a block has no event whose outcome had closed
+            before it, which a short initial window causes.
     """
     if not 0 < initial_fraction < 1:
         msg = f"initial_fraction must be strictly between 0 and 1, not {initial_fraction}"
@@ -317,21 +342,22 @@ def forecast_walk_forward(
     results: list[tuple[Fold, FittedBaseline, dict[date, list[float]]]] = []
     for offset in range(0, len(scored), refit_every):
         block = scored[offset : offset + refit_every]
-        fit_days = [
-            day
+        admitted = [
+            closed
             for day in ordered
-            if day < block[0] and sessions_after(day, embargo_sessions) < block[0]
+            if day < block[0]
+            if (closed := _closed_before(by_day[day], block[0])) is not None
         ]
-        if not fit_days:
+        if not admitted:
             msg = (
-                f"no day had closed its outcomes by {block[0]}: an embargo of "
-                f"{embargo_sessions} sessions leaves nothing to fit on"
+                f"no event had closed its outcome window by {block[0]}, so the "
+                "first block has nothing to be fitted on"
             )
             raise InsufficientObservationsError(msg)
-        model, fitted_rate, train_events = _fit_fold(by_day, fit_days)
+        model, fitted_rate, train_events = _fit_fold(admitted)
         forecasts = {day: forecast(model, by_day[day].features) for day in block}
         fold = Fold(
-            fit_days=fit_days,
+            fit_days=[day.day for day in admitted],
             scored_days=block,
             fitted_base_rate=fitted_rate,
             train_events=train_events,
@@ -343,7 +369,6 @@ def forecast_walk_forward(
 def evaluate_baseline(
     days: Sequence[DayOfEvents],
     *,
-    embargo_sessions: int,
     initial_fraction: float = INITIAL_FRACTION,
     refit_every: int = REFIT_EVERY,
 ) -> Evaluation:
@@ -356,7 +381,6 @@ def evaluate_baseline(
     """
     blocks = forecast_walk_forward(
         days,
-        embargo_sessions=embargo_sessions,
         initial_fraction=initial_fraction,
         refit_every=refit_every,
     )

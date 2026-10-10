@@ -93,10 +93,12 @@ factor the sector benchmark only partly removes.
 uv run arbiter report --domain insider
 ```
 
-`report` fits the baseline arm on the earlier fraction of the stored days and
-scores it on the rest, writing `reports/baseline-insider.md` and the figure
-beside it. The split is chronological, never random: a random split would place
+`report` evaluates the baseline arm walk-forward and writes
+`reports/baseline-insider.md` and the figure beside it. The first
+`--initial-fraction` of the stored days (default 0.3) are fitted on and never
+scored; every later day is scored, in blocks of `--refit-every` days (default
+10), each by a model refitted on the events whose outcomes had closed before the
+block began. The split is by date, never random: a random split would place
 events from one day on both sides and report as skill what is partly memory.
-Days whose outcomes were still open when the last fitted day's forecasts were
-made are withheld from both sides. [`methodology.md`](methodology.md) covers
+[`methodology.md`](methodology.md) covers
 the evaluation design in full.
