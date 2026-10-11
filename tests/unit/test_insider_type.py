@@ -21,6 +21,7 @@ from arbiter.evaluation.insider_type import (
     ROUTINE,
     UNCLASSIFIED,
     History,
+    LoadedHistory,
     Trade,
     available_archives,
     classify_event,
@@ -56,10 +57,26 @@ def test_the_same_month_in_each_of_three_prior_years_is_routine():
 
 
 @pytest.mark.parametrize("off_year", [2023, 2024, 2025])
-def test_every_year_but_not_the_same_month_each_time_is_opportunistic(off_year: int):
+def test_every_year_but_no_common_month_is_opportunistic(off_year: int):
     # Whichever single year breaks the pattern, two matching years are not enough.
     history = _history(*(_trade(y, 9 if y == off_year else 6) for y in (2023, 2024, 2025)))
     assert classify_pair(history, OWNER, ISSUER, JUNE_2026) == OPPORTUNISTIC
+
+
+def test_months_shared_only_pairwise_are_not_a_routine_month():
+    history = _history(
+        _trade(2023, 1), _trade(2023, 2), _trade(2024, 2), _trade(2024, 3),
+        _trade(2025, 1), _trade(2025, 3),
+    )  # fmt: skip
+    assert classify_pair(history, OWNER, ISSUER, JUNE_2026) == OPPORTUNISTIC
+
+
+@pytest.mark.parametrize("event_month", [1, 3, 6, 12])
+def test_a_routine_trader_is_routine_in_every_month_not_only_their_own(event_month: int):
+    # The classification is of the trader: this one always trades in March.
+    history = _history(_trade(2023, 3), _trade(2024, 3), _trade(2025, 3))
+    event = datetime(2026, event_month, 15, 15, tzinfo=UTC)
+    assert classify_pair(history, OWNER, ISSUER, event) == ROUTINE
 
 
 def test_extra_trades_in_other_months_do_not_spoil_routine():
@@ -91,9 +108,18 @@ def test_a_trade_in_the_events_own_year_is_ignored():
     assert classify_pair(history, OWNER, ISSUER, JUNE_2026) == UNCLASSIFIED
 
 
-def test_a_trade_filed_after_the_event_was_accepted_is_ignored():
-    late = _trade(2025, 6, filed=date(2026, 6, 20))
-    history = _history(_trade(2023, 6), _trade(2024, 6), late)
+@pytest.mark.parametrize("late_year", [2023, 2024, 2025])
+def test_a_trade_filed_after_the_event_was_accepted_is_ignored_whatever_its_year(
+    late_year: int,
+):
+    # A 4/A restating an old trade can be filed long after it: the filter applies to
+    # every year of the window, not only the latest.
+    history = _history(
+        *(
+            _trade(y, 6, filed=date(2026, 6, 20) if y == late_year else None)
+            for y in (2023, 2024, 2025)
+        )
+    )
     # Premise: once the filing is public the same history is routine.
     assert (
         classify_pair(history, OWNER, ISSUER, datetime(2026, 6, 25, 15, tzinfo=UTC)) == ROUTINE
@@ -108,13 +134,14 @@ def test_a_trade_filed_on_the_acceptance_date_is_not_yet_history():
     assert classify_pair(history, OWNER, ISSUER, JUNE_2026 + timedelta(days=1)) == ROUTINE
 
 
-def test_the_month_is_the_us_eastern_month_of_acceptance():
+def test_the_year_is_the_us_eastern_year_of_acceptance():
     history = _history(_trade(2023, 6), _trade(2024, 6), _trade(2025, 6))
-    # 02:00 UTC on 1 July is 22:00 on 30 June in New York.
-    assert classify_pair(history, OWNER, ISSUER, datetime(2026, 7, 1, 2, tzinfo=UTC)) == ROUTINE
-    assert classify_pair(history, OWNER, ISSUER, datetime(2026, 7, 1, 6, tzinfo=UTC)) == (
-        OPPORTUNISTIC
+    # 03:00 UTC on 1 January 2026 is 22:00 on 31 December 2025 in New York, where the
+    # window is 2022-2024 and 2022 is missing.
+    assert classify_pair(history, OWNER, ISSUER, datetime(2026, 1, 1, 3, tzinfo=UTC)) == (
+        UNCLASSIFIED
     )
+    assert classify_pair(history, OWNER, ISSUER, datetime(2026, 1, 1, 6, tzinfo=UTC)) == ROUTINE
 
 
 def test_history_is_per_pair_not_per_person():
@@ -258,12 +285,15 @@ def test_each_type_is_scored_within_itself_and_the_whole_sample_is_accounted_for
 # --- the report section ------------------------------------------------------
 
 
+_LOADED = LoadedHistory({}, "2023q1", "2025q4", 0, 0)
+
+
 def test_the_section_states_the_definitions_cites_the_paper_and_follows_the_size_section():
     scores, classes = _scores_and_classes()
     text = render_baseline_report(
         report_evaluation(0.01, 0.02, 0.5),
         GENERATED,
-        insider_type=ic_by_insider_type(scores, classes),
+        insider_type=ic_by_insider_type(scores, classes, history=_LOADED),
     )
     flat = " ".join(text.split())
     assert text.index("## By issuer size") < text.index("## By insider type")
@@ -272,7 +302,13 @@ def test_the_section_states_the_definitions_cites_the_paper_and_follows_the_size
     assert "| Routine |" in text
     assert "Cohen, Malloy and Pomorski (2012)" in flat
     assert '"Decoding Inside Information"' in flat
-    assert "2023 to 2025 only" in flat
+    assert "from the 2023q1 to the 2025q4 data sets" in flat
+    assert "trades filed after 2025q4 are absent" in flat
+    assert "the trader is classified, not the trade" in flat
+    assert "the insider is the owner at one issuer, not the person" in flat
+    assert "including trades under 10b5-1 plans, which the scored events exclude" in flat
+    assert "history years come from transaction dates" in flat
+    assert "Excluded from the history" not in flat
     assert "does not test whether the rows differ" in flat
     assert "5 were mixed" in flat
     assert "2 were classified but fell in a type-day below the minimum" in flat
@@ -329,7 +365,7 @@ def test_the_loader_credits_every_owner_with_open_market_trades_on_forms_4_and_4
     tmp_path: Path,
 ):
     _build_zip(tmp_path / "2024q1_form345.zip")
-    history = load_history(tmp_path)
+    history = load_history(tmp_path).trades
 
     expected: dict[tuple[int, int], frozenset[tuple[int, int, date]]] = {}
     for issuer, owners, trades in EXPECTED.values():
@@ -368,7 +404,7 @@ def test_a_changed_zip_set_does_not_reuse_a_stale_cache(tmp_path: Path):
     before = load_history(tmp_path)
     _build_zip(tmp_path / "2024q2_form345.zip")
     # Same rows again, so only the cache key can tell the two sets apart.
-    assert load_history(tmp_path) == before
+    assert load_history(tmp_path).trades == before.trades
     assert len(list(tmp_path.glob("insider_history_*.parquet"))) == 2
 
 

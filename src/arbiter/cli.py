@@ -308,8 +308,9 @@ def report(
         history = load_history(Path(insider_history))
         type_breakdown = ic_by_insider_type(
             evaluation.issuer_scores,
-            load_issuer_day_classes(store, domain, evaluation.test_days, history),
+            load_issuer_day_classes(store, domain, evaluation.test_days, history.trades),
             overlap_lags=HORIZONS[domain],
+            history=history,
         )
     report_text = render_baseline_report(
         evaluation,

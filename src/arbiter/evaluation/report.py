@@ -287,6 +287,34 @@ def _size_section(
     return lines
 
 
+def _history_lines(breakdown: TypeBreakdown) -> list[str]:
+    """Say which quarters of history were loaded, when known."""
+    if not breakdown.history_first:
+        return []
+    return [
+        f"The history is Forms 4 and 4/A from the {breakdown.history_first} to the "
+        f"{breakdown.history_last}",
+        f"data sets; trades filed after {breakdown.history_last} are absent, and an event",
+        "needs three prior calendar years of it to be classified.",
+    ]
+
+
+def _skipped_lines(breakdown: TypeBreakdown) -> list[str]:
+    """Report rows excluded from the history, only when there were any."""
+    parts: list[str] = []
+    if breakdown.unparseable_rows:
+        parts.append(
+            f"{breakdown.unparseable_rows:,} history rows had an unparseable date or CIK"
+        )
+    if breakdown.future_dated_trades:
+        parts.append(
+            f"{breakdown.future_dated_trades:,} history trades were dated after their filing"
+        )
+    if not parts:
+        return []
+    return [f"Excluded from the history: {' and '.join(parts)}."]
+
+
 def _type_caveat(breakdown: TypeBreakdown, headline_significant: bool) -> list[str]:
     """What the table cannot show, sharper when one row crosses |t| of 2 alone."""
     lines = [
@@ -313,13 +341,21 @@ def _type_section(
     in_rows = sum(row.issuer_days for row in breakdown.rows)
     lines += [
         "Rank correlation within routine and opportunistic insiders, after Cohen, Malloy",
-        'and Pomorski (2012), "Decoding Inside Information", Journal of Finance. An',
-        "insider is an owner at one issuer. For an event in month M of year Y the insider is",
-        "routine if they made open-market trades in month M of each of the three prior years,",
-        "opportunistic if they traded in each of those years but not that month every time,",
-        "and unclassified otherwise; an event with several owners is classified only if they",
-        "agree, and an issuer-day only if its classified events agree. The history is Forms 4",
-        "and 4/A from 2023 to 2025 only, so it can classify events from 2026 and no earlier.",
+        'and Pomorski (2012), "Decoding Inside Information", Journal of Finance. As there,',
+        "the trader is classified, not the trade: for an event in year Y an insider is",
+        "routine if there is a calendar month in which they made open-market trades in each",
+        "of the three prior years, opportunistic if they traded in each of those years but in",
+        "no common month, and unclassified otherwise. An event with several owners is",
+        "classified only if they agree, and an issuer-day only if its classified events agree.",
+        *_history_lines(breakdown),
+        "",
+        "Departures from the paper: the insider is the owner at one issuer, not the person.",
+        "History counts open-market purchases and sales in any non-derivative security,",
+        "including trades under 10b5-1 plans, which the scored events exclude. The event's",
+        "year is that of its acceptance, while history years come from transaction dates",
+        "because events store no transaction date, so a trade made in late December and",
+        "accepted in January can sit a year early.",
+        "",
         f"A type-day counts only with at least {MIN_EVENTS_PER_DAY} issuers of that type.",
         "",
         "| Type | Mean | SE | t | Days | Issuer-days |",
@@ -333,6 +369,7 @@ def _type_section(
         f"{breakdown.unclassified:,} were unclassified, {breakdown.mixed:,} were mixed (their",
         "events disagreed), and",
         f"{breakdown.dropped:,} were classified but fell in a type-day below the minimum.",
+        *_skipped_lines(breakdown),
         "",
         *_type_caveat(breakdown, headline_significant),
         "",
