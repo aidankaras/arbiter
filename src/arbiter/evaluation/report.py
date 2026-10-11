@@ -13,9 +13,11 @@ a new report, not an edit to the old one.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable, Sequence
 from datetime import date
 
 from arbiter.arms.evaluate import Evaluation
+from arbiter.evaluation.insider_type import TypeBreakdown
 from arbiter.evaluation.metrics import MIN_EVENTS_PER_DAY, ICSummary
 from arbiter.evaluation.size import SIZE_SESSIONS, BucketIC, SizeBreakdown
 
@@ -207,19 +209,35 @@ def _unlabelled(evaluation: Evaluation) -> str:
     )
 
 
+def _group_row(
+    label: str, ic: ICSummary | None, days: int, issuer_days: int, leading: Sequence[str] = ()
+) -> str:
+    """One group's row; a group that never reached the threshold is blank, not zero.
+
+    `leading` are the cells between the label and the statistics.
+    """
+    cells = [label, *leading]
+    if ic is None:
+        cells += ["n/a", "n/a", "n/a"]
+    else:
+        cells += [
+            _signed(ic.mean),
+            f"{ic.standard_error:.4f}",
+            _signed(ic.t_statistic, places=2),
+        ]
+    cells += [str(days), f"{issuer_days:,}"]
+    return "| " + " | ".join(cells) + " |"
+
+
 def _size_row(bucket: BucketIC) -> str:
-    """One bucket's row; a bucket that never reached the threshold is blank, not zero."""
+    """One size bucket's row."""
     median = "n/a" if bucket.median_size is None else f"{bucket.median_size / 1e6:,.2f}"
-    if bucket.ic is None:
-        return (
-            f"| {bucket.label} | {median} | n/a | n/a | n/a | "
-            f"{bucket.days} | {bucket.issuer_days:,} |"
-        )
-    return (
-        f"| {bucket.label} | {median} | {_signed(bucket.ic.mean)} | "
-        f"{bucket.ic.standard_error:.4f} | {_signed(bucket.ic.t_statistic, places=2)} | "
-        f"{bucket.days} | {bucket.issuer_days:,} |"
-    )
+    return _group_row(bucket.label, bucket.ic, bucket.days, bucket.issuer_days, [median])
+
+
+def _crossing_alone(ics: Iterable[ICSummary | None], headline_significant: bool) -> bool:
+    """Whether some group reaches |t| of 2 while the headline does not."""
+    return any(ic is not None and ic.is_significant for ic in ics) and not headline_significant
 
 
 def _size_caveat(size: SizeBreakdown, headline_significant: bool) -> list[str]:
@@ -229,8 +247,7 @@ def _size_caveat(size: SizeBreakdown, headline_significant: bool) -> list[str]:
         "sit; it does not test whether the buckets differ from one another, and a",
         "difference between two rows is not evidence that size matters.",
     ]
-    crossing = any(b.ic is not None and b.ic.is_significant for b in size.buckets)
-    if crossing and not headline_significant:
+    if _crossing_alone((b.ic for b in size.buckets), headline_significant):
         lines += [
             "A row reaching |t| of 2 while the headline does not is one of three subsets",
             "crossing that bar, which is not unusual; the buckets were not tested against",
@@ -270,18 +287,111 @@ def _size_section(
     return lines
 
 
+def _history_lines(breakdown: TypeBreakdown) -> list[str]:
+    """Say which quarters of history were loaded, when known."""
+    if not breakdown.history_first:
+        return []
+    return [
+        f"The history is Forms 4 and 4/A from the {breakdown.history_first} to the "
+        f"{breakdown.history_last}",
+        f"data sets; trades filed after {breakdown.history_last} are absent, and an event",
+        "needs three prior calendar years of it to be classified.",
+    ]
+
+
+def _skipped_lines(breakdown: TypeBreakdown) -> list[str]:
+    """Report rows excluded from the history, only when there were any."""
+    parts: list[str] = []
+    if breakdown.unparseable_rows:
+        parts.append(
+            f"{breakdown.unparseable_rows:,} history rows had an unparseable date or CIK"
+        )
+    if breakdown.future_dated_trades:
+        parts.append(
+            f"{breakdown.future_dated_trades:,} history trades were dated after their filing"
+        )
+    if not parts:
+        return []
+    return [f"Excluded from the history: {' and '.join(parts)}."]
+
+
+def _type_caveat(breakdown: TypeBreakdown, headline_significant: bool) -> list[str]:
+    """What the table cannot show, sharper when one row crosses |t| of 2 alone."""
+    lines = [
+        "These are two subsets of the headline. The table shows where any signal would",
+        "sit; it does not test whether the rows differ from one another, and a",
+        "difference between them is not evidence that insider type matters.",
+    ]
+    if _crossing_alone((r.ic for r in breakdown.rows), headline_significant):
+        lines += [
+            "A row reaching |t| of 2 while the headline does not is one of two subsets",
+            "crossing that bar; the rows were not tested against each other, and such a",
+            "row is not a finding.",
+        ]
+    return lines
+
+
+def _type_section(
+    breakdown: TypeBreakdown | None, omitted: str | None, headline_significant: bool
+) -> list[str]:
+    """The by-insider-type section, or the one line saying why it is absent."""
+    lines = ["## By insider type", ""]
+    if breakdown is None:
+        return [*lines, omitted or "Not computed.", ""]
+    in_rows = sum(row.issuer_days for row in breakdown.rows)
+    lines += [
+        "Rank correlation within routine and opportunistic insiders, after Cohen, Malloy",
+        'and Pomorski (2012), "Decoding Inside Information", Journal of Finance. As there,',
+        "the trader is classified, not the trade: for an event in year Y an insider is",
+        "routine if there is a calendar month in which they made open-market trades in each",
+        "of the three prior years, opportunistic if they traded in each of those years but in",
+        "no common month, and unclassified otherwise. An event with several owners is",
+        "classified only if they agree, and an issuer-day only if its classified events agree.",
+        *_history_lines(breakdown),
+        "",
+        "Departures from the paper: the insider is the owner at one issuer, not the person.",
+        "History counts open-market purchases and sales in any non-derivative security,",
+        "including trades under 10b5-1 plans, which the scored events exclude. The event's",
+        "year is that of its acceptance, while history years come from transaction dates",
+        "because events store no transaction date, so a trade made in late December and",
+        "accepted in January can sit a year early.",
+        "",
+        f"A type-day counts only with at least {MIN_EVENTS_PER_DAY} issuers of that type.",
+        "",
+        "| Type | Mean | SE | t | Days | Issuer-days |",
+        "|---|---|---|---|---|---|",
+        *(
+            _group_row(r.label.capitalize(), r.ic, r.days, r.issuer_days)
+            for r in breakdown.rows
+        ),
+        "",
+        f"Of {breakdown.scored_issuer_days:,} scored issuer-days, {in_rows:,} are in the rows;",
+        f"{breakdown.unclassified:,} were unclassified, {breakdown.mixed:,} were mixed (their",
+        "events disagreed), and",
+        f"{breakdown.dropped:,} were classified but fell in a type-day below the minimum.",
+        *_skipped_lines(breakdown),
+        "",
+        *_type_caveat(breakdown, headline_significant),
+        "",
+    ]
+    return lines
+
+
 def render_baseline_report(
     evaluation: Evaluation,
     generated_on: date,
     size: SizeBreakdown | None = None,
     size_omitted: str | None = None,
+    insider_type: TypeBreakdown | None = None,
+    insider_type_omitted: str | None = None,
 ) -> str:
     """Render an evaluation as a Markdown report.
 
     `generated_on` is passed rather than read from the clock so the same
     evaluation renders identically whenever it is regenerated, which is what
     makes a committed report diffable. `size` is the breakdown by issuer size;
-    without it the section says why, in `size_omitted`.
+    without it the section says why, in `size_omitted`. `insider_type` and
+    `insider_type_omitted` do the same for the routine/opportunistic section.
     """
     ic = evaluation.ic
     lines: list[str] = [
@@ -347,6 +457,7 @@ def render_baseline_report(
         f"| t | {_signed(ic.t_statistic, places=2)} |",
         "",
         *_size_section(size, size_omitted, ic.is_significant),
+        *_type_section(insider_type, insider_type_omitted, ic.is_significant),
         "## Calibration",
         "",
         "Whether a stated probability means what it says. A well-calibrated forecast",

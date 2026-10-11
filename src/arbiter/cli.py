@@ -28,6 +28,12 @@ from arbiter.arms.evaluate import (
 from arbiter.arms.features import UnsupportedDomainError
 from arbiter.config import Settings, get_settings
 from arbiter.evaluation.figure import render_baseline_figure
+from arbiter.evaluation.insider_type import (
+    available_archives,
+    ic_by_insider_type,
+    load_history,
+    load_issuer_day_classes,
+)
 from arbiter.evaluation.metrics import InsufficientObservationsError
 from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.resolution import HORIZONS, WindowsStillOpenError, resolve_stored_day
@@ -206,6 +212,7 @@ def report(
     initial_fraction: float = INITIAL_FRACTION,
     refit_every: int = REFIT_EVERY,
     packet_root: str = "data/packets",
+    insider_history: str = "data/raw/form345",
 ) -> None:
     """Fit the baseline arm on the stored history and write its measurement.
 
@@ -218,6 +225,11 @@ def report(
     The information coefficient by issuer size is read from the evidence packets under
     `--packet-root`; with no packet partition for any scored day that section is
     left out, with a line saying so.
+
+    The breakdown by insider type (routine versus opportunistic) classifies each event
+    from the SEC Insider Transactions Data Sets in `--insider-history`; with no
+    `*_form345.zip` there, that section is left out, with a line saying so. The first
+    run streams the zips and caches the result beside them.
     """
     if not 0 < initial_fraction < 1:
         typer.echo(
@@ -281,11 +293,32 @@ def report(
             evaluation.issuer_scores, sizes, overlap_lags=HORIZONS[domain]
         )
         size_omitted = None
+    type_breakdown = None
+    type_omitted: str | None = None
+    if domain != "insider":
+        type_omitted = (
+            f"Omitted: insider type is defined for insider transactions, not '{domain}'."
+        )
+    elif not available_archives(Path(insider_history)):
+        type_omitted = (
+            f"Omitted: no *_form345.zip under {insider_history}, so insiders' trading "
+            "history is unknown."
+        )
+    else:
+        history = load_history(Path(insider_history))
+        type_breakdown = ic_by_insider_type(
+            evaluation.issuer_scores,
+            load_issuer_day_classes(store, domain, evaluation.test_days, history.trades),
+            overlap_lags=HORIZONS[domain],
+            history=history,
+        )
     report_text = render_baseline_report(
         evaluation,
         generated_on=current_session_date(),
         size=size_breakdown,
         size_omitted=size_omitted,
+        insider_type=type_breakdown,
+        insider_type_omitted=type_omitted,
     )
     figure = render_baseline_figure(evaluation)
     destination = Path(out) / f"baseline-{domain}.md"
