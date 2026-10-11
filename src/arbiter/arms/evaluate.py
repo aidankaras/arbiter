@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
+from typing import NamedTuple
 
 from arbiter.arms.baseline import FittedBaseline, fit_baseline, forecast
 from arbiter.arms.features import day_features
@@ -47,6 +48,18 @@ INITIAL_FRACTION = 0.3
 
 #: Scored days per refit, counted in populated stored days rather than sessions.
 REFIT_EVERY = 10
+
+
+class IssuerScore(NamedTuple):
+    """One issuer's scored day: what was forecast and what followed.
+
+    The unit the information coefficient is computed over, kept with its issuer
+    so a breakdown by an issuer attribute can regroup the same numbers.
+    """
+
+    cik: int
+    forecast: float
+    abnormal_return: float
 
 
 @dataclass(frozen=True)
@@ -127,6 +140,12 @@ class Evaluation:
     #: The last fold's model, which saw the most data. Earlier folds' weights
     #: are not kept; the report labels this table as the final refit's.
     coefficients: dict[str, float]
+    #: Every scored day's issuers with the forecast and return the headline used
+    #: for each, so a breakdown re-slices the identical numbers. Includes days
+    #: too thin to contribute a coefficient.
+    issuer_scores: dict[date, list[IssuerScore]] = field(
+        default_factory=dict[date, list[IssuerScore]]
+    )
 
 
 class LabelCoverageError(ValueError):
@@ -236,7 +255,7 @@ def _issuer_day_outcomes(days: Sequence[DayOfEvents]) -> list[int]:
     return [outcome for day in days for outcome in _rose(_by_issuer(day.returns, day)[1])]
 
 
-def _by_issuer(forecasts: Sequence[float], day: DayOfEvents) -> tuple[list[float], list[float]]:
+def _scores_by_issuer(forecasts: Sequence[float], day: DayOfEvents) -> list[IssuerScore]:
     """Collapse a day to one forecast and one outcome per issuer.
 
     Filings by several insiders at one company resolve to a single outcome, so
@@ -248,11 +267,18 @@ def _by_issuer(forecasts: Sequence[float], day: DayOfEvents) -> tuple[list[float
         probabilities.append(probability)
         returns.append(realised)
 
-    means = [
-        (sum(probabilities) / len(probabilities), sum(returns) / len(returns))
-        for probabilities, returns in grouped.values()
+    return [
+        IssuerScore(
+            issuer, sum(probabilities) / len(probabilities), sum(returns) / len(returns)
+        )
+        for issuer, (probabilities, returns) in grouped.items()
     ]
-    return [mean for mean, _ in means], [realised for _, realised in means]
+
+
+def _by_issuer(forecasts: Sequence[float], day: DayOfEvents) -> tuple[list[float], list[float]]:
+    """The forecasts and returns of `_scores_by_issuer`, as parallel lists."""
+    scores = _scores_by_issuer(forecasts, day)
+    return [score.forecast for score in scores], [score.abnormal_return for score in scores]
 
 
 def _issuer_day_weights(day: DayOfEvents) -> list[float]:
@@ -400,6 +426,7 @@ def evaluate_baseline(
     # constant a forecaster refitting on the same schedule could have quoted.
     references: list[float] = []
     issuer_days = 0
+    issuer_scores: dict[date, list[IssuerScore]] = {}
     # Counted over every day from the first scored one, including days on which
     # nothing resolved: those never enter the walk, but their events were filed
     # in the scoring period all the same.
@@ -411,7 +438,10 @@ def evaluate_baseline(
     for fold, _, block_forecasts in blocks:
         for scored_day in fold.scored_days:
             day = by_day[scored_day]
-            issuer_forecasts, issuer_returns = _by_issuer(block_forecasts[scored_day], day)
+            scores = _scores_by_issuer(block_forecasts[scored_day], day)
+            issuer_scores[scored_day] = scores
+            issuer_forecasts = [score.forecast for score in scores]
+            issuer_returns = [score.abnormal_return for score in scores]
             scored_events += len(day)
 
             # Calibration, Brier skill and the base rate are pooled at the
@@ -454,6 +484,7 @@ def evaluate_baseline(
         test_issuer_days=issuer_days,
         pooled_issuer_days=len(pooled_outcomes),
         coefficients=blocks[-1][1].coefficients(),
+        issuer_scores=issuer_scores,
     )
 
 

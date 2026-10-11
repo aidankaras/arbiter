@@ -31,6 +31,7 @@ from arbiter.evaluation.figure import render_baseline_figure
 from arbiter.evaluation.metrics import InsufficientObservationsError
 from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.resolution import HORIZONS, WindowsStillOpenError, resolve_stored_day
+from arbiter.evaluation.size import ic_by_size, load_sizes
 from arbiter.ingestion.backfill import backfill as run_backfill
 from arbiter.ingestion.backfill import day_is_stored, ingest_and_resolve, sampled_trading_days
 from arbiter.ingestion.market import Bar, current_session_date, daily_bars_tolerating_gaps
@@ -204,6 +205,7 @@ def report(
     out: str = "reports",
     initial_fraction: float = INITIAL_FRACTION,
     refit_every: int = REFIT_EVERY,
+    packet_root: str = "data/packets",
 ) -> None:
     """Fit the baseline arm on the stored history and write its measurement.
 
@@ -212,6 +214,10 @@ def report(
     every `--refit-every` scored days. The report is written to `reports/` so that what
     was claimed at a given commit stays inspectable; recomputing against more
     data produces a new report rather than an edit to the old one.
+
+    The information coefficient by issuer size is read from the evidence packets under
+    `--packet-root`; with no packet partition for any scored day that section is
+    left out, with a line saying so.
     """
     if not 0 < initial_fraction < 1:
         typer.echo(
@@ -263,7 +269,24 @@ def report(
 
     # Both are rendered before either is written, so a failure in one cannot
     # leave a new report beside a figure from an earlier run.
-    report_text = render_baseline_report(evaluation, generated_on=current_session_date())
+    sizes, partitions = load_sizes(Path(packet_root), domain, evaluation.test_days)
+    if partitions == 0:
+        size_breakdown = None
+        size_omitted = (
+            f"Omitted: no {domain} packet partition under {packet_root} covers a scored day, "
+            "so issuer size is unknown."
+        )
+    else:
+        size_breakdown = ic_by_size(
+            evaluation.issuer_scores, sizes, overlap_lags=HORIZONS[domain]
+        )
+        size_omitted = None
+    report_text = render_baseline_report(
+        evaluation,
+        generated_on=current_session_date(),
+        size=size_breakdown,
+        size_omitted=size_omitted,
+    )
     figure = render_baseline_figure(evaluation)
     destination = Path(out) / f"baseline-{domain}.md"
     destination.parent.mkdir(parents=True, exist_ok=True)

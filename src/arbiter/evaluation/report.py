@@ -17,6 +17,7 @@ from datetime import date
 
 from arbiter.arms.evaluate import Evaluation
 from arbiter.evaluation.metrics import ICSummary
+from arbiter.evaluation.size import SIZE_SESSIONS, BucketIC, SizeBreakdown
 
 #: Width of the bar drawn beside each calibration band, in characters. A drawn
 #: comparison is read at a glance where two columns of decimals are not.
@@ -206,12 +207,70 @@ def _unlabelled(evaluation: Evaluation) -> str:
     )
 
 
-def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
+def _size_row(bucket: BucketIC) -> str:
+    """One bucket's row; a bucket that never reached the threshold is blank, not zero."""
+    if bucket.lower is None or bucket.upper is None:
+        size_range = "n/a"
+    else:
+        size_range = f"{bucket.lower / 1e6:,.2f} to {bucket.upper / 1e6:,.2f}"
+    if bucket.ic is None:
+        return (
+            f"| {bucket.label} | {size_range} | n/a | n/a | n/a | "
+            f"{bucket.days} | {bucket.issuer_days:,} |"
+        )
+    return (
+        f"| {bucket.label} | {size_range} | {_signed(bucket.ic.mean)} | "
+        f"{bucket.ic.standard_error:.4f} | {_signed(bucket.ic.t_statistic, places=2)} | "
+        f"{bucket.days} | {bucket.issuer_days:,} |"
+    )
+
+
+def _size_section(
+    size: SizeBreakdown | None, omitted: str | None, headline_significant: bool
+) -> list[str]:
+    """The by-size section, or the one line saying why it is absent."""
+    whose = (
+        "the headline" if headline_significant else "a headline not distinguishable from zero"
+    )
+    lines = ["## By issuer size", ""]
+    if size is None:
+        return [*lines, omitted or "Not computed.", ""]
+    lines += [
+        "Rank correlation within terciles of issuer size, drawn afresh each day. Size is",
+        f"the median daily dollar volume over the issuer's last {SIZE_SESSIONS} sessions in",
+        "its evidence packet, so it uses only bars that had closed before the filing.",
+        "The range is the median across contributing days of each bucket's smallest and",
+        "largest issuer, in millions of dollars of daily volume. A bucket-day counts only",
+        "with enough issuers to rank, as in the headline.",
+        "",
+        "| Bucket | Daily volume ($M) | Mean | Standard error | t | Days | Issuer-days |",
+        "|---|---|---|---|---|---|---|",
+        *(_size_row(bucket) for bucket in size.buckets),
+        "",
+        f"{size.unbucketed:,} of {size.scored_issuer_days:,} scored issuer-days have no size "
+        f"(no packet, or fewer than {SIZE_SESSIONS} bars) and sit in no bucket.",
+        "",
+        f"These are three subsets of {whose}. The table shows where any signal would",
+        "sit; it does not test whether the buckets differ from one another, and with",
+        "three rows one reaching |t| of 2 by chance is not unusual. A difference between",
+        "two rows is not evidence that size matters.",
+        "",
+    ]
+    return lines
+
+
+def render_baseline_report(
+    evaluation: Evaluation,
+    generated_on: date,
+    size: SizeBreakdown | None = None,
+    size_omitted: str | None = None,
+) -> str:
     """Render an evaluation as a Markdown report.
 
     `generated_on` is passed rather than read from the clock so the same
     evaluation renders identically whenever it is regenerated, which is what
-    makes a committed report diffable.
+    makes a committed report diffable. `size` is the breakdown by issuer size;
+    without it the section says why, in `size_omitted`.
     """
     ic = evaluation.ic
     lines: list[str] = [
@@ -276,6 +335,7 @@ def render_baseline_report(evaluation: Evaluation, generated_on: date) -> str:
         f"| Standard error | {ic.standard_error:.4f}{_overlap_note(ic)} |",
         f"| t | {_signed(ic.t_statistic, places=2)} |",
         "",
+        *_size_section(size, size_omitted, ic.is_significant),
         "## Calibration",
         "",
         "Whether a stated probability means what it says. A well-calibrated forecast",
