@@ -246,7 +246,6 @@ def _size_section(
     lines = ["## By issuer size", ""]
     if size is None:
         return [*lines, omitted or "Not computed.", ""]
-    sized = size.scored_issuer_days - size.unbucketed
     in_rows = sum(bucket.issuer_days for bucket in size.buckets)
     lines += [
         "Rank correlation within terciles of issuer size, drawn afresh each day. Size is",
@@ -263,8 +262,7 @@ def _size_section(
         "",
         f"Of {size.scored_issuer_days:,} scored issuer-days, {in_rows:,} are in the rows;",
         f"{size.dropped:,} had a size but fell in a bucket-day below the minimum, and",
-        f"{size.unbucketed:,} had no size (no packet, or fewer than {SIZE_SESSIONS} bars)",
-        f"({sized:,} were sized).",
+        f"{size.unbucketed:,} had no size: no packet, or fewer than {SIZE_SESSIONS} bars.",
         "",
         *_size_caveat(size, headline_significant),
         "",
