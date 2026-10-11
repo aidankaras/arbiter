@@ -70,20 +70,20 @@ def median_dollar_volume(bars: Sequence[SessionBar]) -> float | None:
 def packet_sizes(packets: Sequence[EvidencePacket]) -> dict[int, float]:
     """Return each issuer's size from one day's packets; unsized issuers are absent.
 
-    Events of one issuer on one day share its price history, but not always the
-    same bars: a filing accepted after the close sees that day's session and one
-    accepted before it does not. The packet with the earliest acceptance decides,
-    which is the most conservative view and deterministic.
+    An issuer-day can have several packets whose bars differ: a filing accepted
+    after the close sees one session more than one accepted before it, and an
+    issuer with more than one listed security (a common and a preferred share)
+    has a price series per security. The largest size decides. Every packet is
+    from the one day, so the choice uses nothing later than the filing, and the
+    primary listing is the one that carries the volume; taking the earliest
+    packet sized a company on its preferred share at a fiftieth of its common's
+    traded value.
     """
-    earliest: dict[int, EvidencePacket] = {}
-    for packet in sorted(packets, key=lambda p: (p.as_of, p.event_id)):
-        earliest.setdefault(packet.issuer.cik, packet)
-
     sizes: dict[int, float] = {}
-    for cik, packet in earliest.items():
+    for packet in packets:
         size = median_dollar_volume(packet.bars)
         if size is not None:
-            sizes[cik] = size
+            sizes[packet.issuer.cik] = max(size, sizes.get(packet.issuer.cik, size))
     return sizes
 
 
@@ -125,19 +125,24 @@ class BucketIC:
     days: int
     #: Issuer-days on those bucket-days only.
     issuer_days: int
-    #: Median across contributing days of the bucket's smallest and largest
-    #: size, dollars of daily volume; `None` when no day contributed.
-    lower: float | None
-    upper: float | None
+    #: Median size of those issuer-days, dollars of daily volume; `None` when no
+    #: bucket-day contributed.
+    median_size: float | None
 
 
 @dataclass(frozen=True)
 class SizeBreakdown:
-    """The coefficient by size bucket and the sample it leaves out."""
+    """The coefficient by size bucket and the sample it leaves out.
+
+    The buckets' issuer-days, `dropped` and `unbucketed` add up to
+    `scored_issuer_days`.
+    """
 
     buckets: tuple[BucketIC, ...]
     #: Scored issuer-days with no size: no packet, or fewer than `SIZE_SESSIONS` bars.
     unbucketed: int
+    #: Sized issuer-days whose bucket-day held fewer than `MIN_EVENTS_PER_DAY`.
+    dropped: int
     scored_issuer_days: int
 
 
@@ -148,16 +153,17 @@ def ic_by_size(
 ) -> SizeBreakdown:
     """Compute the information coefficient within size terciles of each day.
 
-    A bucket-day contributes only with at least `MIN_EVENTS_PER_DAY` issuers,
-    the threshold the headline applies to a whole day, and the per-day
-    coefficients are summarised exactly as the headline's are. Terciles are
-    formed among the issuers that have a size.
+    Terciles are formed among the issuers that have a size. A bucket-day
+    contributes only with at least `MIN_EVENTS_PER_DAY` issuers in that bucket:
+    the headline's minimum applied to each third, so a day needs roughly three
+    times as many sized issuers as the headline asks. The per-day coefficients
+    are summarised exactly as the headline's are.
     """
     daily: list[dict[date, float]] = [{} for _ in BUCKETS]
     counted = [0] * len(BUCKETS)
-    lowers: list[list[float]] = [[] for _ in BUCKETS]
-    uppers: list[list[float]] = [[] for _ in BUCKETS]
+    member_sizes: list[list[float]] = [[] for _ in BUCKETS]
     unbucketed = 0
+    dropped = 0
     total = 0
 
     for day, issuers in scores.items():
@@ -168,13 +174,13 @@ def ic_by_size(
         for index in range(len(BUCKETS)):
             members = [s for s in issuers if assigned.get(s.cik) == index]
             if len(members) < MIN_EVENTS_PER_DAY:
+                dropped += len(members)
                 continue
             daily[index][day] = information_coefficient(
                 [m.forecast for m in members], [m.abnormal_return for m in members]
             )
             counted[index] += len(members)
-            lowers[index].append(min(sized[m.cik] for m in members))
-            uppers[index].append(max(sized[m.cik] for m in members))
+            member_sizes[index].extend(sized[m.cik] for m in members)
 
     buckets: list[BucketIC] = []
     for index, label in enumerate(BUCKETS):
@@ -188,8 +194,11 @@ def ic_by_size(
                 ic=summary,
                 days=summary.days if summary else len(daily[index]),
                 issuer_days=counted[index],
-                lower=statistics.median(lowers[index]) if lowers[index] else None,
-                upper=statistics.median(uppers[index]) if uppers[index] else None,
+                median_size=(
+                    statistics.median(member_sizes[index]) if member_sizes[index] else None
+                ),
             )
         )
-    return SizeBreakdown(tuple(buckets), unbucketed=unbucketed, scored_issuer_days=total)
+    return SizeBreakdown(
+        tuple(buckets), unbucketed=unbucketed, dropped=dropped, scored_issuer_days=total
+    )

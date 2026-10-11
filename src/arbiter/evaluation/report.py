@@ -16,7 +16,7 @@ import math
 from datetime import date
 
 from arbiter.arms.evaluate import Evaluation
-from arbiter.evaluation.metrics import ICSummary
+from arbiter.evaluation.metrics import MIN_EVENTS_PER_DAY, ICSummary
 from arbiter.evaluation.size import SIZE_SESSIONS, BucketIC, SizeBreakdown
 
 #: Width of the bar drawn beside each calibration band, in characters. A drawn
@@ -209,51 +209,64 @@ def _unlabelled(evaluation: Evaluation) -> str:
 
 def _size_row(bucket: BucketIC) -> str:
     """One bucket's row; a bucket that never reached the threshold is blank, not zero."""
-    if bucket.lower is None or bucket.upper is None:
-        size_range = "n/a"
-    else:
-        size_range = f"{bucket.lower / 1e6:,.2f} to {bucket.upper / 1e6:,.2f}"
+    median = "n/a" if bucket.median_size is None else f"{bucket.median_size / 1e6:,.2f}"
     if bucket.ic is None:
         return (
-            f"| {bucket.label} | {size_range} | n/a | n/a | n/a | "
+            f"| {bucket.label} | {median} | n/a | n/a | n/a | "
             f"{bucket.days} | {bucket.issuer_days:,} |"
         )
     return (
-        f"| {bucket.label} | {size_range} | {_signed(bucket.ic.mean)} | "
+        f"| {bucket.label} | {median} | {_signed(bucket.ic.mean)} | "
         f"{bucket.ic.standard_error:.4f} | {_signed(bucket.ic.t_statistic, places=2)} | "
         f"{bucket.days} | {bucket.issuer_days:,} |"
     )
+
+
+def _size_caveat(size: SizeBreakdown, headline_significant: bool) -> list[str]:
+    """What the table cannot show, sharper when one row crosses |t| of 2 alone."""
+    lines = [
+        "These are three subsets of the headline. The table shows where any signal would",
+        "sit; it does not test whether the buckets differ from one another, and a",
+        "difference between two rows is not evidence that size matters.",
+    ]
+    crossing = any(b.ic is not None and b.ic.is_significant for b in size.buckets)
+    if crossing and not headline_significant:
+        lines += [
+            "A row reaching |t| of 2 while the headline does not is one of three subsets",
+            "crossing that bar, which is not unusual; the buckets were not tested against",
+            "each other, and such a row is not a finding.",
+        ]
+    return lines
 
 
 def _size_section(
     size: SizeBreakdown | None, omitted: str | None, headline_significant: bool
 ) -> list[str]:
     """The by-size section, or the one line saying why it is absent."""
-    whose = (
-        "the headline" if headline_significant else "a headline not distinguishable from zero"
-    )
     lines = ["## By issuer size", ""]
     if size is None:
         return [*lines, omitted or "Not computed.", ""]
+    sized = size.scored_issuer_days - size.unbucketed
+    in_rows = sum(bucket.issuer_days for bucket in size.buckets)
     lines += [
         "Rank correlation within terciles of issuer size, drawn afresh each day. Size is",
         f"the median daily dollar volume over the issuer's last {SIZE_SESSIONS} sessions in",
         "its evidence packet, so it uses only bars that had closed before the filing.",
-        "The range is the median across contributing days of each bucket's smallest and",
-        "largest issuer, in millions of dollars of daily volume. A bucket-day counts only",
-        "with enough issuers to rank, as in the headline.",
+        f"A bucket-day counts only with at least {MIN_EVENTS_PER_DAY} issuers in that bucket,",
+        "the headline's minimum applied to each third, so a day needs about three times as",
+        "many sized issuers as the headline asks. The size column is the median over the",
+        "issuer-days in each row, in millions of dollars of daily volume.",
         "",
-        "| Bucket | Daily volume ($M) | Mean | Standard error | t | Days | Issuer-days |",
+        "| Bucket | Median daily volume, $M | Mean | SE | t | Days | Issuer-days |",
         "|---|---|---|---|---|---|---|",
         *(_size_row(bucket) for bucket in size.buckets),
         "",
-        f"{size.unbucketed:,} of {size.scored_issuer_days:,} scored issuer-days have no size "
-        f"(no packet, or fewer than {SIZE_SESSIONS} bars) and sit in no bucket.",
+        f"Of {size.scored_issuer_days:,} scored issuer-days, {in_rows:,} are in the rows;",
+        f"{size.dropped:,} had a size but fell in a bucket-day below the minimum, and",
+        f"{size.unbucketed:,} had no size (no packet, or fewer than {SIZE_SESSIONS} bars)",
+        f"({sized:,} were sized).",
         "",
-        f"These are three subsets of {whose}. The table shows where any signal would",
-        "sit; it does not test whether the buckets differ from one another, and with",
-        "three rows one reaching |t| of 2 by chance is not unusual. A difference between",
-        "two rows is not evidence that size matters.",
+        *_size_caveat(size, headline_significant),
         "",
     ]
     return lines

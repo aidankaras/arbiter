@@ -14,10 +14,12 @@ from pathlib import Path
 import pytest
 
 from arbiter.arms.evaluate import IssuerScore, evaluate_baseline
-from arbiter.evaluation.metrics import MIN_EVENTS_PER_DAY, information_coefficient
+from arbiter.evaluation.metrics import MIN_EVENTS_PER_DAY, ICSummary, information_coefficient
 from arbiter.evaluation.report import render_baseline_report
 from arbiter.evaluation.size import (
     SIZE_SESSIONS,
+    BucketIC,
+    SizeBreakdown,
     assign_buckets,
     ic_by_size,
     load_sizes,
@@ -101,21 +103,32 @@ def test_fewer_than_twenty_sessions_give_no_size_and_twenty_give_one():
     assert median_dollar_volume(()) is None
 
 
-def test_events_of_one_issuer_filed_together_share_one_size():
-    bars = _bars([1000 * k for k in range(1, 26)])
-    packets = [_packet(7, f"a{n}", MORNING, bars) for n in range(3)]
-    assert len({median_dollar_volume(p.bars) for p in packets}) == 1
-    assert packet_sizes(packets) == {7: median_dollar_volume(bars)}
+def test_bars_out_of_order_are_sorted_before_the_last_twenty_are_taken():
+    # Delivered newest first: the last twenty by session are still the ones
+    # counted, not the last twenty received. Five near-empty early sessions make
+    # the two choices differ: taking the last twenty received gives 11000.
+    volumes = [1] * 5 + [1000 * k for k in range(1, 21)]
+    assert median_dollar_volume(tuple(reversed(_bars(volumes)))) == 21000.0
 
 
-def test_events_straddling_the_close_take_the_size_of_the_earliest_acceptance():
-    # The evening filing sees the 09-01 session as well, so its bars (and its
-    # size) differ from the morning one's. The earliest acceptance decides.
+def test_an_issuer_with_several_packets_is_sized_by_the_largest():
+    # A preferred share filed first and a later one trade thinly; the common
+    # share, between them in time, carries the volume. Neither the earliest, the
+    # latest nor the smallest packet may decide.
+    thin = [1000] * 25
+    common = [10**6] * 25
+    preferred = _packet(7, "a-preferred", MORNING, _bars(thin))
+    primary = _packet(7, "b-common", MORNING + timedelta(minutes=5), _bars(common))
+    late = _packet(7, "c-late", MORNING + timedelta(minutes=10), _bars(thin))
+    assert packet_sizes([late, primary, preferred]) == {7: 2e6}
+
+
+def test_a_packet_that_sees_one_more_session_can_set_the_size():
     base = [1000 * k for k in range(1, 26)]
     morning = _packet(7, "m", MORNING, _bars(base, last=date(2026, 8, 31)))
     evening = _packet(7, "e", EVENING, _bars([*base[1:], 10**7], last=date(2026, 9, 1)))
     assert median_dollar_volume(morning.bars) != median_dollar_volume(evening.bars)
-    assert packet_sizes([evening, morning]) == {7: median_dollar_volume(morning.bars)}
+    assert packet_sizes([morning, evening]) == {7: median_dollar_volume(evening.bars)}
 
 
 def test_an_issuer_without_enough_bars_is_absent_from_the_sizes():
@@ -146,12 +159,30 @@ def test_terciles_are_rank_based_with_ties_broken_by_cik():
     assert [assign_buckets(flat)[cik] for cik in range(1, 7)] == [0, 0, 1, 1, 2, 2]
 
 
-def _scores_and_sizes(
-    days: int = 12,
-) -> tuple[dict[date, list[IssuerScore]], dict[tuple[date, int], float]]:
-    """Thirty issuers a day, size rising with CIK.
+def test_buckets_follow_size_whatever_the_cik_order():
+    # CIK 1 is the largest and CIK 6 the smallest: size and CIK disagree, so a
+    # ranking by CIK would put them in the opposite buckets.
+    sizes = {1: 600.0, 2: 500.0, 3: 400.0, 4: 300.0, 5: 200.0, 6: 100.0}
+    assert assign_buckets(sizes) == {6: 0, 5: 0, 4: 1, 3: 1, 2: 2, 1: 2}
+    scrambled = {10: 3.0, 40: 1.0, 20: 6.0, 50: 2.0, 30: 5.0, 60: 4.0}
+    assert assign_buckets(scrambled) == {40: 0, 50: 0, 10: 1, 60: 1, 30: 2, 20: 2}
 
-    Small (CIKs 1-10): returns rank with the forecast. Large (21-30): reversed.
+
+def _cik(rank: int, layout: str) -> int:
+    """The CIK of the issuer of size rank `rank` (1 smallest), unrelated to the order.
+
+    `scrambled` is a fixed permutation; `reversed` gives the smallest issuer the
+    largest CIK. Neither lets a ranking by CIK stand in for one by size.
+    """
+    return (rank * 11) % 31 + 100 if layout == "scrambled" else 200 - rank
+
+
+def _scores_and_sizes(
+    days: int = 12, layout: str = "scrambled"
+) -> tuple[dict[date, list[IssuerScore]], dict[tuple[date, int], float]]:
+    """Thirty issuers a day; the issuer of size rank k trades k million dollars a day.
+
+    Small (ranks 1-10): returns rank with the forecast. Large (21-30): reversed.
     Middle: returns unrelated to the forecast. On odd days two small-bucket
     returns swap, so days differ and an error across days exists.
     """
@@ -159,26 +190,28 @@ def _scores_and_sizes(
     sizes: dict[tuple[date, int], float] = {}
     for offset in range(days):
         day = date(2026, 8, 3) + timedelta(days=offset)
-        small = [cik / 100 for cik in range(1, 11)]
+        small = [rank / 100 for rank in range(1, 11)]
         if offset % 2:
             small[0], small[1] = small[1], small[0]
         rows: list[IssuerScore] = []
-        for cik in range(1, 31):
-            forecast = cik / 100
-            if cik <= 10:
-                realised = small[cik - 1]
-            elif cik <= 20:
-                realised = _UNRELATED[cik - 11] / 100
+        for rank in range(1, 31):
+            forecast = rank / 100
+            if rank <= 10:
+                realised = small[rank - 1]
+            elif rank <= 20:
+                realised = _UNRELATED[rank - 11] / 100
             else:
                 realised = -forecast
+            cik = _cik(rank, layout)
             rows.append(IssuerScore(cik, forecast, realised))
-            sizes[(day, cik)] = cik * 1e6
+            sizes[(day, cik)] = rank * 1e6
         scores[day] = rows
     return scores, sizes
 
 
-def test_a_forecast_that_ranks_only_the_small_third_scores_only_there():
-    scores, sizes = _scores_and_sizes()
+@pytest.mark.parametrize("layout", ["scrambled", "reversed"])
+def test_a_forecast_that_ranks_only_the_small_third_scores_only_there(layout: str):
+    scores, sizes = _scores_and_sizes(layout=layout)
     result = ic_by_size(scores, sizes)
     small, middle, large = result.buckets
 
@@ -197,9 +230,8 @@ def test_a_forecast_that_ranks_only_the_small_third_scores_only_there():
     assert (small.days, small.issuer_days) == (12, 120)
     assert result.unbucketed == 0
     assert result.scored_issuer_days == 360
-    # Ranges come from the size of each bucket's members, in dollars.
-    assert (small.lower, small.upper) == (1e6, 10e6)
-    assert (large.lower, large.upper) == (21e6, 30e6)
+    # Medians of the members' sizes: 1..10, 11..20 and 21..30 million dollars.
+    assert (small.median_size, middle.median_size, large.median_size) == (5.5e6, 15.5e6, 25.5e6)
 
 
 def test_buckets_are_formed_within_each_day_not_across_the_sample():
@@ -233,20 +265,48 @@ def test_a_bucket_day_below_the_threshold_contributes_nothing():
     # days must add neither a coefficient nor their issuer-days to a bucket.
     assert MIN_EVENTS_PER_DAY == 10
     scores, sizes = _scores_and_sizes(days=6)
-    thin_days = list(scores)[:3]
-    for day in thin_days:
-        keep = {c for c in range(1, 31) if c % 10 != 0}  # drops 10, 20, 30
-        scores[day] = [s for s in scores[day] if s.cik in keep]
+    for day in list(scores)[:3]:
+        # Drop the issuers of size rank 10, 20 and 30 (27 left: 9 a bucket).
+        scores[day] = [s for s in scores[day] if sizes[(day, s.cik)] % 10e6 != 0]
     result = ic_by_size(scores, sizes)
     for bucket in result.buckets:
         assert bucket.days == 3
         assert bucket.issuer_days == 30
+    assert result.dropped == 3 * 27
+
+
+def test_the_minimum_applies_to_each_bucket_not_to_the_day():
+    # 29 sized issuers split 10 / 10 / 9: the two full buckets qualify and the
+    # third does not. A rule on the day's count would drop all three.
+    scores, sizes = _scores_and_sizes(days=4)
+    day = next(iter(scores))
+    scores[day] = [s for s in scores[day] if sizes[(day, s.cik)] != 30e6]
+    result = ic_by_size(scores, sizes)
+    small, middle, large = result.buckets
+    assert (small.days, middle.days, large.days) == (4, 4, 3)
+    assert (small.issuer_days, middle.issuer_days, large.issuer_days) == (40, 40, 39 - 9)
+    assert result.dropped == 9
+
+
+def test_every_scored_issuer_day_is_in_a_row_dropped_or_unsized():
+    scores, sizes = _scores_and_sizes(days=5)
+    days = list(scores)
+    scores[days[0]] = [s for s in scores[days[0]] if sizes[(days[0], s.cik)] != 30e6]
+    scores[days[1]] = scores[days[1]][:12]
+    for rows in scores.values():
+        rows.extend(IssuerScore(cik, 0.5, 0.0) for cik in (1, 2, 3))
+    result = ic_by_size(scores, sizes)
+    assert result.unbucketed == 15
+    assert result.dropped > 0
+    in_rows = sum(bucket.issuer_days for bucket in result.buckets)
+    assert in_rows + result.dropped + result.unbucketed == result.scored_issuer_days
+    assert result.scored_issuer_days == sum(len(rows) for rows in scores.values())
 
 
 def test_issuer_days_without_a_size_are_counted_and_left_out():
     scores, sizes = _scores_and_sizes(days=4)
     for rows in scores.values():
-        rows.extend(IssuerScore(cik, 0.5, 0.0) for cik in (31, 32, 33))
+        rows.extend(IssuerScore(cik, 0.5, 0.0) for cik in (1, 2, 3))
     result = ic_by_size(scores, sizes)
     assert result.unbucketed == 12
     assert result.scored_issuer_days == 4 * 33
@@ -268,21 +328,58 @@ def test_the_report_omits_the_section_with_a_reason_when_no_packets_exist(tmp_pa
     assert "| Small |" not in text
 
 
-def test_the_section_reports_each_bucket_and_the_unsized_count():
+def test_the_section_reports_each_bucket_and_accounts_for_the_whole_sample():
     scores, sizes = _scores_and_sizes(days=4)
+    day = next(iter(scores))
+    scores[day] = [s for s in scores[day] if sizes[(day, s.cik)] != 30e6]
     for rows in scores.values():
-        rows.extend(IssuerScore(cik, 0.5, 0.0) for cik in (31, 32, 33))
+        rows.extend(IssuerScore(cik, 0.5, 0.0) for cik in (1, 2, 3))
     text = render_baseline_report(
         report_evaluation(0.01, 0.02, 0.5),
         GENERATED,
         size=ic_by_size(scores, sizes, overlap_lags=1),
     )
-    assert "12 of 132 scored issuer-days have no size" in text
     for label in ("Small", "Middle", "Large"):
         assert f"| {label} |" in text
-    assert "| Small | 1.00 to 10.00 |" in text
+    assert "| Small | 5.50 |" in text
+    # 131 scored: 110 in rows, 9 sized but in a thin bucket-day, 3 x 4 unsized.
+    assert "Of 131 scored issuer-days, 110 are in the rows;" in text
+    assert "9 had a size but fell in a bucket-day below the minimum" in text
+    assert "12 had no size" in text
     assert text.index("## Information coefficient by day") < text.index("## By issuer size")
     assert text.index("## By issuer size") < text.index("## Calibration")
+
+
+def _breakdown(t: float) -> SizeBreakdown:
+    ic = ICSummary(mean=0.05, standard_error=0.05 / t, t_statistic=t, days=20, observations=600)
+    row = BucketIC("Small", ic, days=20, issuer_days=600, median_size=1e6)
+    quiet = BucketIC("Large", None, days=0, issuer_days=0, median_size=None)
+    return SizeBreakdown((row, quiet, quiet), unbucketed=0, dropped=0, scored_issuer_days=600)
+
+
+_NOT_A_FINDING = "such a row is not a finding"
+
+
+def test_a_lone_bucket_crossing_two_is_cautioned_when_the_headline_does_not():
+    text = render_baseline_report(
+        report_evaluation(0.01, 0.02, 0.5), GENERATED, _breakdown(2.5)
+    )
+    assert _NOT_A_FINDING in text
+    assert "one of three subsets" in text.replace("\n", " ")
+
+
+def test_no_caution_about_a_crossing_when_no_bucket_crosses_or_the_headline_does():
+    below = render_baseline_report(
+        report_evaluation(0.01, 0.02, 0.5), GENERATED, _breakdown(1.2)
+    )
+    assert _NOT_A_FINDING not in below
+    significant = render_baseline_report(
+        report_evaluation(0.05, 0.01, 5.0), GENERATED, _breakdown(2.5)
+    )
+    assert _NOT_A_FINDING not in significant
+    # Both still say what the table cannot show.
+    assert "does not test whether the buckets differ" in below.replace("\n", " ")
+    assert "does not test whether the buckets differ" in significant.replace("\n", " ")
 
 
 def test_adding_the_size_section_changes_no_other_line():
