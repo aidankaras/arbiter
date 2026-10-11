@@ -268,6 +268,35 @@ exist so far; the others arrive with the arms and portfolios that produce them.
   no longer holds, is refused rather than scored: it means the labels were
   written before an outcome window closed or survived a re-ingestion.
 
+### Breakdowns of the headline
+
+The report also shows the information coefficient within subsets of the scored
+issuer-days. Each subset is scored exactly as the headline is, with the same
+minimum of ten issuers applied to each subset on each day and the same
+standard error. They describe where any signal sits; they are not tests of
+whether subsets differ, and a row crossing |t| = 2 while the headline does not
+is reported as such rather than as a finding. Every scored issuer-day is
+accounted for: in a row, below a subset-day's minimum, or unclassified.
+
+- **By issuer size.** Terciles drawn afresh each day, so a market-wide change in
+  volume does not move issuers between them. Size is the median daily dollar
+  volume over the issuer's last 20 sessions in its evidence packet, so only bars
+  that had closed before the filing count; an issuer with several listed
+  securities is sized on the largest. Issuers with fewer than 20 sessions of
+  history are unsized.
+- **By insider type**, after Cohen, Malloy and Pomorski (2012). An insider who
+  traded in the same calendar month in each of the three preceding years is a
+  routine trader, and all of their trades that year are routine; one who traded
+  in each of those years with no such month is opportunistic; anyone else is
+  unclassified. History is open-market purchases and sales from SEC's bulk
+  insider data sets, admitted only if filed before the event's acceptance date.
+  Departures from the paper, each stated in the report: the insider is the
+  owner at one issuer rather than the person; history includes trades under
+  10b5-1 plans, which the scored events exclude; and an event's year comes from
+  its acceptance date while history years come from transaction dates. A filing
+  by several owners is classified only if they agree, and an issuer-day only if
+  its classified events agree.
+
 ## Backtest contamination
 
 The LLM arms were trained on data that covers the backtest period. They may
@@ -308,6 +337,11 @@ benchmark that moves with the system it measures measures nothing.
   Slippage on less liquid names is understated.
 - **Survivorship.** The issuer universe is constructed from filings, so companies
   that stopped filing mid-sample are handled by exclusion at the event level
-  rather than by a point-in-time universe reconstruction.
+  rather than by a point-in-time universe reconstruction. Tickers are read from
+  the filing itself where it states one (every Form 4; a current report's cover
+  page), so an issuer that later delisted is still priced; a current report
+  without a usable cover-page symbol falls back to SEC's current ticker map,
+  which omits such issuers, and each red-flag label records which source it
+  used.
 - **Single-market, single-horizon.** US equities, five-day horizon. Results
   should not be assumed to generalize beyond that.
