@@ -103,16 +103,20 @@ _COMMON_EQUITY = re.compile(r"\bcommon\b|\bordinary shares?\b|\bcapital stock\b"
 #: equity inside a different instrument. "Common Units" stay in: that is how an
 #: MLP's primary security is titled.
 _NOT_COMMON_EQUITY = re.compile(
-    r"\bwarrants?\b|\brights?\b|\bpreferred\b|\bdepositary\b|\bnotes?\b"
+    r"\bwarrants?\b|\brights?\b|\bpreferred\b|\bpreference\b|\bdepositary\b|\bnotes?\b"
     r"|\bdebentures?\b|\bbonds?\b|(?<!common )\bunits?\b",
     re.IGNORECASE,
 )
 
-#: A right that travels with the common stock, as in "Common Stock and associated
-#: Preferred Stock Purchase Rights", is part of the common stock's own title and
-#: says nothing about what the security is.
+#: A stock purchase right that travels with the common stock, as in "Common
+#: Stock and associated Preferred Stock Purchase Rights" or "Common Stock
+#: (including associated preferred stock purchase rights)", is part of the
+#: common stock's own title and says nothing about what the security is. Only a
+#: purchase right is stripped: "and related Warrants" or "together with the
+#: associated Contingent Value Rights" name a different instrument and stay.
 _ATTACHED_RIGHT = re.compile(
-    r"\b(?:and|together with)\s+(?:the\s+)?(?:associated|attached|related)\b.*$",
+    r"\s*\(?\s*\b(?:and|together with|including)\s+(?:the\s+)?"
+    r"(?:associated|attached|related)\b[^()]*\bpurchase\s+rights?\b\)?\s*$",
     re.IGNORECASE,
 )
 

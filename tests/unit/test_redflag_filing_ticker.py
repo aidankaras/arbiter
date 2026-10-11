@@ -721,3 +721,36 @@ def test_below_the_minimum_attempts_even_total_failure_is_only_recorded(
     _day_of(monkeypatch, tmp_path, total=4, failing=4)
 
     assert _stored(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("title", "is_common"),
+    [
+        ("Common Stock (including associated preferred stock purchase rights)", True),
+        (
+            "Common Stock, par value $0.01 per share, and the associated Series A "
+            "Junior Participating Preferred Stock Purchase Rights",
+            True,
+        ),
+        ("Common Stock and related Warrants", False),
+        ("Class A Common Stock together with the associated Contingent Value Rights", False),
+        ("6.75% Non-Cumulative Preference Shares, Series A", False),
+        ("Ordinary Preference Shares", False),
+    ],
+)
+def test_attached_purchase_rights_are_stripped_and_other_attachments_are_not(
+    title: str, is_common: bool
+):
+    """Constructed titles in the phrasings a review found on cover pages: only a
+    stock purchase right travels with the common stock; warrants, contingent value
+    rights and preference shares are different instruments."""
+    from arbiter.events.redflags import _names_common_equity
+
+    assert _names_common_equity(title) is is_common
+
+
+def test_a_lone_preference_share_is_not_taken():
+    """A constructed preference-only cover: the issuer's common stock is not listed."""
+    securities = [CoverSecurity("ABCD", "6.75% Non-Cumulative Preference Shares, Series A", 1)]
+
+    assert choose_filing_ticker(securities, issuer_cik=1) is None
