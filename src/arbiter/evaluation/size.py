@@ -33,13 +33,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from arbiter.arms.evaluate import IssuerScore
-from arbiter.evaluation.metrics import (
-    MIN_EVENTS_PER_DAY,
-    ICSummary,
-    InsufficientObservationsError,
-    information_coefficient,
-    summarise_ic,
-)
+from arbiter.evaluation.groups import ic_within_groups
+from arbiter.evaluation.metrics import ICSummary
 from arbiter.packets.schema import EvidencePacket, SessionBar
 from arbiter.packets.store import partition_exists, read_packets
 
@@ -159,46 +154,30 @@ def ic_by_size(
     times as many sized issuers as the headline asks. The per-day coefficients
     are summarised exactly as the headline's are.
     """
-    daily: list[dict[date, float]] = [{} for _ in BUCKETS]
-    counted = [0] * len(BUCKETS)
-    member_sizes: list[list[float]] = [[] for _ in BUCKETS]
-    unbucketed = 0
-    dropped = 0
-    total = 0
 
-    for day, issuers in scores.items():
-        total += len(issuers)
-        sized = {s.cik: sizes[(day, s.cik)] for s in issuers if (day, s.cik) in sizes}
-        unbucketed += len(issuers) - len(sized)
-        assigned = assign_buckets(sized)
-        for index in range(len(BUCKETS)):
-            members = [s for s in issuers if assigned.get(s.cik) == index]
-            if len(members) < MIN_EVENTS_PER_DAY:
-                dropped += len(members)
-                continue
-            daily[index][day] = information_coefficient(
-                [m.forecast for m in members], [m.abnormal_return for m in members]
-            )
-            counted[index] += len(members)
-            member_sizes[index].extend(sized[m.cik] for m in members)
-
-    buckets: list[BucketIC] = []
-    for index, label in enumerate(BUCKETS):
-        try:
-            summary = summarise_ic(daily[index], counted[index], overlap_lags=overlap_lags)
-        except InsufficientObservationsError:
-            summary = None
-        buckets.append(
-            BucketIC(
-                label=label,
-                ic=summary,
-                days=summary.days if summary else len(daily[index]),
-                issuer_days=counted[index],
-                median_size=(
-                    statistics.median(member_sizes[index]) if member_sizes[index] else None
-                ),
-            )
+    def assign(day: date, issuers: Sequence[IssuerScore]) -> dict[int, int]:
+        return assign_buckets(
+            {s.cik: sizes[(day, s.cik)] for s in issuers if (day, s.cik) in sizes}
         )
+
+    grouped = ic_within_groups(scores, assign, len(BUCKETS), overlap_lags=overlap_lags)
+    buckets = tuple(
+        BucketIC(
+            label=label,
+            ic=group.ic,
+            days=group.days,
+            issuer_days=group.issuer_days,
+            median_size=(
+                statistics.median(sizes[(day, m.cik)] for day, m in group.members)
+                if group.members
+                else None
+            ),
+        )
+        for label, group in zip(BUCKETS, grouped.groups, strict=True)
+    )
     return SizeBreakdown(
-        tuple(buckets), unbucketed=unbucketed, dropped=dropped, scored_issuer_days=total
+        buckets,
+        unbucketed=grouped.ungrouped,
+        dropped=grouped.dropped,
+        scored_issuer_days=grouped.scored_issuer_days,
     )
