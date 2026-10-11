@@ -27,8 +27,8 @@ from arbiter.events.insider import (
     extract_insider_events,
     is_candidate,
 )
-from arbiter.events.redflags import RedFlagEvent, extract_redflag_event
-from arbiter.ingestion.edgar import filings_with_objects
+from arbiter.events.redflags import RedFlagEvent, extract_redflag_event, with_filing_ticker
+from arbiter.ingestion.edgar import cover_securities, filings_with_objects
 from arbiter.ingestion.store import write_events, write_unpriceable
 
 INSIDER_FORM = "4"
@@ -46,6 +46,23 @@ _PARSE_FAILURES = (ValueError, KeyError, AttributeError)
 #: A day where this share of filings fails to parse is a systemic breakage, not
 #: a handful of odd filers, and is raised rather than quarantined.
 _SYSTEMIC_REJECTION_RATE = 0.05
+
+
+#: Fewer qualifying events than this say nothing about the XBRL client: two
+#: failures out of three is a bad afternoon, not a break.
+_MIN_TICKER_READS_FOR_GUARD = 5
+
+#: Above this share of failed reads the client is taken to be broken.
+_SYSTEMIC_TICKER_FAILURE_RATE = 0.5
+
+
+class SystemicTickerReadError(RuntimeError):
+    """Raised when most of a day's cover-page reads failed.
+
+    Storing such a day would silently route its events to the current ticker
+    map, which is the delisting-correlated exclusion this field exists to avoid.
+    Failing the day lets a backfill record it and a rerun retry it.
+    """
 
 
 class SystemicParseFailureError(RuntimeError):
@@ -142,6 +159,7 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
     redflag_events: list[RedFlagEvent] = []
     redflag_rejected: list[dict[str, str]] = []
     redflag_untimestamped: list[dict[str, str]] = []
+    redflag_ticker_failures: list[dict[str, str]] = []
     redflag_filings = filings_with_objects(
         REDFLAG_FORM, day, _untimestamped_into(redflag_untimestamped)
     )
@@ -151,8 +169,28 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
         except _PARSE_FAILURES as exc:
             redflag_rejected.append({"accession_no": record.accession_no, "error": str(exc)})
             continue
-        if event is not None:
-            redflag_events.append(event)
+        if event is None:
+            continue
+        # Read only for filings that already qualify, never for every 8-K: the
+        # XBRL fetch is a request per filing, and most of a day's 8-Ks are not
+        # events.
+        try:
+            event = with_filing_ticker(event, cover_securities(filing))
+        except Exception as exc:
+            # Isolated per event and deliberately broad: the XBRL client raises
+            # from parsing, network and library internals, and a ticker is an
+            # enrichment whose absence has a defined fallback (the current map at
+            # labelling). Losing the event, or the day, over it would be the
+            # larger harm. It is recorded, not swallowed: a failure here costs
+            # that event its point-in-time ticker, and a day of them is a client
+            # break someone should see.
+            redflag_ticker_failures.append(
+                {
+                    "accession_no": record.accession_no,
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+            )
+        redflag_events.append(event)
 
     # A filing with no acceptance time was still a filing this day attempted, so
     # it belongs on both sides of the ratio. Unlistable issuers belong on
@@ -194,9 +232,34 @@ def ingest_day(day: date, root: Path, min_value_usd: Decimal) -> dict[str, int]:
         )
         raise SystemicParseFailureError(msg)
 
+    # Outside the parse-rejection count: these events were kept and only lost
+    # their point-in-time ticker, so they are judged by their own guard below.
+    # Written for every day, empty included, and before the guard so a failed day
+    # still leaves its causes on record.
+    failures_path = root / "rejected" / "redflag-ticker" / f"{day.isoformat()}.json"
+    failures_path.parent.mkdir(parents=True, exist_ok=True)
+    failures_path.write_text(json.dumps(redflag_ticker_failures, indent=1) + "\n")
+
+    # The insider domain does not depend on 8-K XBRL, so it is stored before the
+    # red-flag guard can fail the day: an outage of the cover-page reads must not
+    # withhold the domain the published report rests on. The day still counts as
+    # unstored (the red-flag partition is missing), so a rerun retries it.
     write_events(insider_events, root, "insider", day)
-    write_events(redflag_events, root, "redflag", day)
     write_unpriceable(insider_unpriceable, root, "insider", day, stage="extraction")
+
+    attempted_reads = len(redflag_events)
+    if (
+        attempted_reads >= _MIN_TICKER_READS_FOR_GUARD
+        and len(redflag_ticker_failures) / attempted_reads > _SYSTEMIC_TICKER_FAILURE_RATE
+    ):
+        msg = (
+            f"{len(redflag_ticker_failures)} of {attempted_reads} red-flag cover-page "
+            f"reads on {day.isoformat()} failed (see {failures_path}); the day is not "
+            "recorded, because its tickers would silently fall back to the current map."
+        )
+        raise SystemicTickerReadError(msg)
+
+    write_events(redflag_events, root, "redflag", day)
 
     return {
         "insider": len(insider_events),

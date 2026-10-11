@@ -114,6 +114,93 @@ class FilingRecord:
     filing_date: date
 
 
+@dataclass(frozen=True)
+class CoverSecurity:
+    """One registered security stated on a filing's cover page."""
+
+    symbol: str
+    # The title tagged in the same XBRL context as the symbol, or `None` when the
+    # filer tagged a symbol without one.
+    title: str | None
+    # The CIK of the registrant the symbol belongs to, or `None` when that cannot
+    # be established. A combined filing lists every co-registrant's securities on
+    # one cover page, so a symbol is only the issuer's if this matches.
+    entity_cik: int | None
+
+
+_LEGAL_ENTITY_AXIS = "dei:LegalEntityAxis"
+
+
+def _dimensions(xbrl: Any, context_ref: str) -> dict[str, str]:
+    """Return the dimension members of one XBRL context, empty if it has none."""
+    context = xbrl.contexts.get(context_ref)
+    return dict(getattr(context, "dimensions", None) or {})
+
+
+def cover_securities(filing: Any) -> list[CoverSecurity]:
+    """Read the securities a filing's cover page lists, in document order.
+
+    The symbol (`dei:TradingSymbol`) and title (`dei:Security12bTitle`) of one
+    security share an XBRL context: a single-security filing uses the plain
+    entity context, and a filing listing several securities gives each its own
+    dimensioned context. Pairing is therefore by `context_ref`, never by
+    position, which would mispair as soon as one security lacked a title.
+
+    Which registrant a symbol belongs to is read from the same context. A context
+    carrying a `dei:LegalEntityAxis` member belongs to the registrant whose
+    `dei:EntityCentralIndexKey` is tagged under that member; one carrying none
+    belongs to the context's own entity, the filing's primary registrant. In the
+    combined Southern Company and Entergy filings the symbols sit on a
+    share-class axis only, so every symbol resolves to the parent and a
+    subsidiary's event matches none of them. A member with no CIK fact resolves
+    to `None`, which no issuer matches.
+
+    Returns an empty list for a filing with no XBRL or no symbol. Whatever the
+    XBRL client raises propagates: the caller decides how to record a filing
+    whose cover page could not be read.
+    """
+    xbrl = filing.xbrl()
+    if xbrl is None:
+        return []
+    symbols = xbrl.facts.query().by_concept("dei:TradingSymbol").to_dataframe()
+    if symbols.empty:
+        return []
+    titles = xbrl.facts.query().by_concept("dei:Security12bTitle").to_dataframe()
+    ciks = xbrl.facts.query().by_concept("dei:EntityCentralIndexKey").to_dataframe()
+
+    title_by_context: dict[str, str] = {}
+    if not titles.empty:
+        for row in titles.to_dict(orient="records"):
+            # The first title in a context wins: a later duplicate must not
+            # replace the one the symbol was filed with.
+            title_by_context.setdefault(str(row["context_ref"]), str(row["value"]))
+
+    cik_by_member: dict[str, int] = {}
+    if not ciks.empty:
+        for row in ciks.to_dict(orient="records"):
+            member = _dimensions(xbrl, str(row["context_ref"])).get(_LEGAL_ENTITY_AXIS)
+            if member is not None and str(row["value"]).strip().isdigit():
+                cik_by_member.setdefault(member, int(str(row["value"])))
+
+    securities: list[CoverSecurity] = []
+    for row in symbols.to_dict(orient="records"):
+        context_ref = str(row["context_ref"])
+        member = _dimensions(xbrl, context_ref).get(_LEGAL_ENTITY_AXIS)
+        if member is not None:
+            entity_cik = cik_by_member.get(member)
+        else:
+            owner = str(row.get("entity_identifier", "")).strip()
+            entity_cik = int(owner) if owner.isdigit() else None
+        securities.append(
+            CoverSecurity(
+                symbol=str(row["value"]),
+                title=title_by_context.get(context_ref),
+                entity_cik=entity_cik,
+            )
+        )
+    return securities
+
+
 def configure_identity() -> None:
     """Register the contact string the SEC requires on every request."""
     set_identity(get_settings().sec_user_agent)

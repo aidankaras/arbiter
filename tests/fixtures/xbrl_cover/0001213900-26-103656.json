@@ -1,0 +1,93 @@
+{
+  "accession_no": "0001213900-26-103656",
+  "rows": [
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "CRACU",
+      "context_ref": "From2026-09-232026-09-23_custom_UnitsEachConsistingOfOneClassOrdinaryShareOnehalfOfOneRedeemableWarrantAndOneRightMember",
+      "is_dimensioned": true,
+      "entity_identifier": "0002070887",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "CRAC:UnitsEachConsistingOfOneClassOrdinaryShareOnehalfOfOneRedeemableWarrantAndOneRightMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "CRAC",
+      "context_ref": "From2026-09-232026-09-23_custom_ClassOrdinarySharesParValue0.0001PerShareMember",
+      "is_dimensioned": true,
+      "entity_identifier": "0002070887",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "CRAC:ClassOrdinarySharesParValue0.0001PerShareMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "CRACW",
+      "context_ref": "From2026-09-232026-09-23_custom_RedeemableWarrantsEachWholeWarrantExercisableForOneClassOrdinaryShareAtExercisePriceOf11.50PerShareMember",
+      "is_dimensioned": true,
+      "entity_identifier": "0002070887",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "CRAC:RedeemableWarrantsEachWholeWarrantExercisableForOneClassOrdinaryShareAtExercisePriceOf11.50PerShareMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "CRACR",
+      "context_ref": "From2026-09-232026-09-23_custom_RightsEachRightEntitlesHolderToReceive0.20OfOneClassOrdinaryShareUponConsummationOfBusinessCombinationMember",
+      "is_dimensioned": true,
+      "entity_identifier": "0002070887",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "CRAC:RightsEachRightEntitlesHolderToReceive0.20OfOneClassOrdinaryShareUponConsummationOfBusinessCombinationMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Units, each consisting of one Class A ordinary share, one-half of one redeemable warrant, and one right",
+      "context_ref": "From2026-09-232026-09-23_custom_UnitsEachConsistingOfOneClassOrdinaryShareOnehalfOfOneRedeemableWarrantAndOneRightMember",
+      "is_dimensioned": true,
+      "entity_identifier": "0002070887",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "CRAC:UnitsEachConsistingOfOneClassOrdinaryShareOnehalfOfOneRedeemableWarrantAndOneRightMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Class A ordinary shares, par value $0.0001 per share",
+      "context_ref": "From2026-09-232026-09-23_custom_ClassOrdinarySharesParValue0.0001PerShareMember",
+      "is_dimensioned": true,
+      "entity_identifier": "0002070887",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "CRAC:ClassOrdinarySharesParValue0.0001PerShareMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Redeemable warrants, each whole warrant exercisable for one Class A ordinary share at an exercise price of $11.50 per share",
+      "context_ref": "From2026-09-232026-09-23_custom_RedeemableWarrantsEachWholeWarrantExercisableForOneClassOrdinaryShareAtExercisePriceOf11.50PerShareMember",
+      "is_dimensioned": true,
+      "entity_identifier": "0002070887",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "CRAC:RedeemableWarrantsEachWholeWarrantExercisableForOneClassOrdinaryShareAtExercisePriceOf11.50PerShareMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Rights, each right entitles holder to receive 0.20 of one Class A ordinary share upon consummation of a Business Combination",
+      "context_ref": "From2026-09-232026-09-23_custom_RightsEachRightEntitlesHolderToReceive0.20OfOneClassOrdinaryShareUponConsummationOfBusinessCombinationMember",
+      "is_dimensioned": true,
+      "entity_identifier": "0002070887",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "CRAC:RightsEachRightEntitlesHolderToReceive0.20OfOneClassOrdinaryShareUponConsummationOfBusinessCombinationMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0002070887",
+      "context_ref": "AsOf2026-09-23",
+      "is_dimensioned": false,
+      "entity_identifier": "0002070887",
+      "dimensions": {}
+    }
+  ]
+}

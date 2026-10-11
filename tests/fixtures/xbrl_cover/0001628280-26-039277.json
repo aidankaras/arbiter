@@ -1,0 +1,29 @@
+{
+  "accession_no": "0001628280-26-039277",
+  "rows": [
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "COLD",
+      "context_ref": "c-1",
+      "is_dimensioned": false,
+      "entity_identifier": "0001455863",
+      "dimensions": {}
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Common Stock, $0.01 par value per share",
+      "context_ref": "c-1",
+      "is_dimensioned": false,
+      "entity_identifier": "0001455863",
+      "dimensions": {}
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0001455863",
+      "context_ref": "c-1",
+      "is_dimensioned": false,
+      "entity_identifier": "0001455863",
+      "dimensions": {}
+    }
+  ]
+}

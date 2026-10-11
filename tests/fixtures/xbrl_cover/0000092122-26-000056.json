@@ -1,0 +1,247 @@
+{
+  "accession_no": "0000092122-26-000056",
+  "rows": [
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "SO",
+      "context_ref": "c-7",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "us-gaap:CommonStockMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "SOJC",
+      "context_ref": "c-8",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2017B5.25JuniorSubordinatedNotesDue2077Member"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "SOJD",
+      "context_ref": "c-9",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2020A4.95JuniorSubordinatedNotesDue2080Member"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "SOJE",
+      "context_ref": "c-10",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2020C420JuniorSubordinatedNotesDue2060Member"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "SO 81",
+      "context_ref": "c-11",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2021B1875FixedToFixedResetRateJuniorSubordinatedNotesDue2081Member"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "SOJF",
+      "context_ref": "c-12",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2025A6.50JuniorSubordinatedNotesDue2085Member"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "SOMN",
+      "context_ref": "c-13",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:A2025SeriesACorporateUnitsMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "GPJA",
+      "context_ref": "c-14",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2017A500JuniorSubordinatedNotesDue2077Member",
+        "dei:LegalEntityAxis": "so:GeorgiaPowerMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "SO/26A",
+      "context_ref": "c-15",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2016B1.850SeniorNotesDue2026Member",
+        "dei:LegalEntityAxis": "so:SouthernPowerMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Common Stock, par value $0.01 per share",
+      "context_ref": "c-7",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "us-gaap:CommonStockMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Series 2017B 5.25% Junior Subordinated Notes due 2077",
+      "context_ref": "c-8",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2017B5.25JuniorSubordinatedNotesDue2077Member"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Series 2020A 4.95% Junior Subordinated Notes due 2080",
+      "context_ref": "c-9",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2020A4.95JuniorSubordinatedNotesDue2080Member"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Series 2020C 4.20% Junior Subordinated Notes due 2060",
+      "context_ref": "c-10",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2020C420JuniorSubordinatedNotesDue2060Member"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Series 2021B 1.875% Fixed-to-Fixed Reset Rate Junior Subordinated Notes due 2081",
+      "context_ref": "c-11",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2021B1875FixedToFixedResetRateJuniorSubordinatedNotesDue2081Member"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Series 2025A 6.50% Junior Subordinated Notes due 2085",
+      "context_ref": "c-12",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2025A6.50JuniorSubordinatedNotesDue2085Member"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "2025 Series A Corporate Units",
+      "context_ref": "c-13",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:A2025SeriesACorporateUnitsMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Series 2017A 5.00% Junior Subordinated Notes due 2077",
+      "context_ref": "c-14",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2017A500JuniorSubordinatedNotesDue2077Member",
+        "dei:LegalEntityAxis": "so:GeorgiaPowerMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Series 2016B 1.850% Senior Notes due 2026",
+      "context_ref": "c-15",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "so:Series2016B1.850SeniorNotesDue2026Member",
+        "dei:LegalEntityAxis": "so:SouthernPowerMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000092122",
+      "context_ref": "c-1",
+      "is_dimensioned": false,
+      "entity_identifier": "0000092122",
+      "dimensions": {}
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000003153",
+      "context_ref": "c-2",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "dei:LegalEntityAxis": "so:AlabamaPowerMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000041091",
+      "context_ref": "c-3",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "dei:LegalEntityAxis": "so:GeorgiaPowerMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000066904",
+      "context_ref": "c-4",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "dei:LegalEntityAxis": "so:MississippiPowerMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0001160661",
+      "context_ref": "c-5",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "dei:LegalEntityAxis": "so:SouthernPowerMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0001004155",
+      "context_ref": "c-6",
+      "is_dimensioned": true,
+      "entity_identifier": "0000092122",
+      "dimensions": {
+        "dei:LegalEntityAxis": "so:SouthernCompanyGasMember"
+      }
+    }
+  ]
+}

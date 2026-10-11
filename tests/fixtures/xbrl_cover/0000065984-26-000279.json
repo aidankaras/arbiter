@@ -1,0 +1,257 @@
+{
+  "accession_no": "0000065984-26-000279",
+  "rows": [
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "ETR",
+      "context_ref": "c-8",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:EntityListingsExchangeAxis": "exch:XNYS"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "ETR",
+      "context_ref": "c-9",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:EntityListingsExchangeAxis": "exch:XCHI"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "EAI",
+      "context_ref": "c-10",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds4875SeriesDueSeptember2066Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyArkansasMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "ELC",
+      "context_ref": "c-11",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds4875SeriesDueSeptember2066Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyLouisianaMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "EMP",
+      "context_ref": "c-12",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds490SeriesDueOctober2066Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyMississippiMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "ENJ",
+      "context_ref": "c-13",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds50SeriesDueDecember2052Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyNewOrleansMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "ENO",
+      "context_ref": "c-14",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds550SeriesDueApril2066Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyNewOrleansMember"
+      }
+    },
+    {
+      "concept": "dei:TradingSymbol",
+      "value": "ETI/PR",
+      "context_ref": "c-15",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:A5.375SeriesAPreferredStockCumulativeNoParValueMember",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyTexasMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Common Stock, $0.01 Par Value",
+      "context_ref": "c-8",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:EntityListingsExchangeAxis": "exch:XNYS"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Common Stock, $0.01 Par Value",
+      "context_ref": "c-9",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:EntityListingsExchangeAxis": "exch:XCHI"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Mortgage Bonds, 4.875% Series due September 2066",
+      "context_ref": "c-10",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds4875SeriesDueSeptember2066Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyArkansasMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Mortgage Bonds, 4.875% Series due September 2066",
+      "context_ref": "c-11",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds4875SeriesDueSeptember2066Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyLouisianaMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Mortgage Bonds, 4.90% Series due October 2066",
+      "context_ref": "c-12",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds490SeriesDueOctober2066Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyMississippiMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Mortgage Bonds, 5.0% Series due December 2052",
+      "context_ref": "c-13",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds50SeriesDueDecember2052Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyNewOrleansMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "Mortgage Bonds, 5.50% Series due April\u00a02066",
+      "context_ref": "c-14",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:MortgageBonds550SeriesDueApril2066Member",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyNewOrleansMember"
+      }
+    },
+    {
+      "concept": "dei:Security12bTitle",
+      "value": "5.375% Series A Preferred Stock, Cumulative, No Par Value (Liquidation Value $25 Per Share)",
+      "context_ref": "c-15",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "us-gaap:StatementClassOfStockAxis": "etr:A5.375SeriesAPreferredStockCumulativeNoParValueMember",
+        "dei:EntityListingsExchangeAxis": "exch:XNYS",
+        "dei:LegalEntityAxis": "etr:EntergyTexasMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000065984",
+      "context_ref": "c-1",
+      "is_dimensioned": false,
+      "entity_identifier": "0000065984",
+      "dimensions": {}
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000007323",
+      "context_ref": "c-3",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:LegalEntityAxis": "etr:EntergyArkansasMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0001348952",
+      "context_ref": "c-5",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:LegalEntityAxis": "etr:EntergyLouisianaMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000066901",
+      "context_ref": "c-7",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:LegalEntityAxis": "etr:EntergyMississippiMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000071508",
+      "context_ref": "c-2",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:LegalEntityAxis": "etr:EntergyNewOrleansMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0001427437",
+      "context_ref": "c-4",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:LegalEntityAxis": "etr:EntergyTexasMember"
+      }
+    },
+    {
+      "concept": "dei:EntityCentralIndexKey",
+      "value": "0000202584",
+      "context_ref": "c-6",
+      "is_dimensioned": true,
+      "entity_identifier": "0000065984",
+      "dimensions": {
+        "dei:LegalEntityAxis": "etr:SystemEnergyMember"
+      }
+    }
+  ]
+}

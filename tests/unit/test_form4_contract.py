@@ -25,7 +25,7 @@ import pytest
 
 from arbiter.events.insider import extract_insider_events, is_candidate
 from arbiter.ingestion.edgar import FilingRecord
-from tests.unit.form4_stub import Form4Stub
+from tests.unit.form4_stub import Form4Stub, Owner
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "form4"
 
@@ -227,3 +227,77 @@ def test_the_issuer_cik_resolves_to_a_sector_rather_than_the_broad_market():
 
     assert benchmark_for_issuer(cik) == "XLK"
     assert benchmark_for_issuer(1973442) == "SPY", "a reporting owner, for contrast"
+
+
+# --- reporting-owner CIKs ----------------------------------------------------
+# Pinned from the filings' own owner lists (see `reporting_owners` in each
+# fixture), not from running the extractor.
+
+SINGLE_OWNER = "0001104659-26-079686"  # Coastlands Capital LP alone
+TWO_JOINT_OWNERS = "0001104659-26-022377"  # 8 Rivers Capital, LLC and Damian R. Beauchamp
+SEVEN_JOINT_OWNERS = "0001193125-26-085855"  # Noubar Afeyan and six Flagship funds
+
+
+def test_a_single_owner_filing_carries_that_owners_cik():
+    """Shape: one reporting owner, so the Insider cell names one entity."""
+    record, form4 = _load(SINGLE_OWNER)
+    assert len(form4.reporting_owners) == 1, "premise: exactly one owner on the form"
+
+    events = extract_insider_events(record, form4)
+
+    assert events, "premise: the filing reports transactions"
+    assert {event.owner_ciks for event in events} == {(2068530,)}
+
+
+def test_a_jointly_filed_transaction_carries_every_owners_cik():
+    """Shape: two owners; the one collapsed event must list both, sorted."""
+    record, form4 = _load(TWO_JOINT_OWNERS)
+    events = extract_insider_events(record, form4)
+    assert " / " in events[0].insider_name, "premise: owners are collapsed into one name string"
+
+    assert {event.owner_ciks for event in events} == {(1973442, 1981100)}
+
+
+def test_a_seven_owner_joint_filing_is_one_candidate_listing_all_seven():
+    """Shape: the flagship joint filing, one $25M purchase reported seven ways.
+
+    Taking only the first owner's CIK would attribute a fund group's purchase
+    to its lead individual alone.
+    """
+    _, candidates = _candidates(SEVEN_JOINT_OWNERS)
+
+    assert len(candidates) == 1
+    assert candidates[0].owner_ciks == (
+        1222012,
+        1716926,
+        1725008,
+        1761283,
+        1780956,
+        1805916,
+        1918834,
+    )
+
+
+def test_owner_ciks_are_deduplicated_and_sorted():
+    """A constructed owner list, because no recorded filing repeats an owner.
+
+    The same person can appear twice on a form (once per relationship), and the
+    list is an identity set, so a repeat must not appear twice.
+    """
+    record, form4 = _load(SINGLE_OWNER)
+    form4.reporting_owners = [
+        Owner("0000000900", "B"),
+        Owner("0000000100", "A"),
+        Owner("0000000900", "B again"),
+    ]
+
+    events = extract_insider_events(record, form4)
+
+    assert {event.owner_ciks for event in events} == {(100, 900)}
+
+
+def test_every_recorded_fixture_records_its_owners():
+    """A sweep: a fixture recorded without owners would pin an empty tuple."""
+    for path in sorted(FIXTURES.glob("*.json")):
+        events, _ = _candidates(path.stem)
+        assert all(event.owner_ciks for event in events), path.stem

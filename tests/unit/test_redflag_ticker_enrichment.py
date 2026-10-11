@@ -103,3 +103,44 @@ def test_a_blank_ticker_on_a_row_is_treated_as_absent():
     priced, _ = with_tickers([_row("r-1", ticker="")], ticker_for=lambda cik: "AGNC")
 
     assert priced[0]["ticker"] == "AGNC"
+
+
+def test_a_stored_none_ticker_is_missing_not_a_symbol():
+    """Parquet stores an absent filing ticker as a null, which reads back as `None`.
+
+    `str(None)` is "None", a plausible-looking symbol; the row must go to the
+    lookup instead.
+    """
+    asked: list[int] = []
+
+    def lookup(cik: int) -> str | None:
+        asked.append(cik)
+        return "AGNC"
+
+    priced, _ = with_tickers([_row("r-1", ticker=None, ticker_source=None)], ticker_for=lookup)
+
+    assert asked == [1423689], "a None ticker must trigger the lookup"
+    assert priced[0]["ticker"] == "AGNC"
+
+
+def test_a_filing_ticker_survives_even_when_the_current_map_has_moved_on():
+    """The delisted issuer of issue #43: the map no longer lists it, the filing did."""
+    asked: list[int] = []
+
+    def lookup(cik: int) -> str | None:
+        asked.append(cik)
+        return None
+
+    priced, unpriceable = with_tickers(
+        [_row("r-1", ticker="FBRX", ticker_source="filing")], ticker_for=lookup
+    )
+
+    assert asked == []
+    assert unpriceable == []
+    assert (priced[0]["ticker"], priced[0]["ticker_source"]) == ("FBRX", "filing")
+
+
+def test_a_ticker_resolved_from_the_current_map_is_marked_as_such():
+    priced, _ = with_tickers([_row("r-1", ticker=None)], ticker_for=lambda cik: "AGNC")
+
+    assert priced[0]["ticker_source"] == "current_map"
