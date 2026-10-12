@@ -26,6 +26,11 @@ The conventional arm, measured on insider transactions:
   gave +0.121 (t = 3.09) on 11 scored days. Filling in every trading day from
   June to September did not bear that out, which is the shrinkage a small sample
   should be expected to show.
+- **Broken down by issuer size and by insider type** (routine against
+  opportunistic, after Cohen, Malloy and Pomorski, 2012): neither breakdown is a
+  finding at this sample size. Small issuers show the largest coefficient
+  (t = 2.08 on one of three subsets), and only 12% of issuer-days have the three
+  years of trading history the insider-type split needs.
 - A measurement of the control, not a strategy. Full report:
   [`reports/baseline-insider.md`](reports/baseline-insider.md).
 
