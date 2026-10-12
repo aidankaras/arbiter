@@ -4,7 +4,7 @@ Logistic regression on filing characteristics, forecasting the sign of the
 five-session abnormal return. This is the control the language-model arms
 are measured against, not a proposed strategy.
 
-Generated 2026-10-10 from the event store.
+Generated 2026-10-12 from the event store.
 
 ## Result
 
@@ -99,6 +99,70 @@ at one company on one day resolve to a single outcome.
 | **Mean** | **+0.0285** |
 | Standard error | 0.0187, the larger of the error treating days as independent and one allowing for each day's outcome window overlapping the next 5 |
 | t | +1.52 |
+
+## By issuer size
+
+Rank correlation within terciles of issuer size, drawn afresh each day. Size is
+the median daily dollar volume over the issuer's last 20 sessions in
+its evidence packet, so it uses only bars that had closed before the filing.
+A bucket-day counts only with at least 10 issuers in that bucket,
+the headline's minimum applied to each third, so a day needs about three times as
+many sized issuers as the headline asks. The size column is the median over the
+issuer-days in each row, in millions of dollars of daily volume.
+
+| Bucket | Median daily volume, $M | Mean | SE | t | Days | Issuer-days |
+|---|---|---|---|---|---|---|
+| Small | 2.41 | +0.0716 | 0.0345 | +2.08 | 47 | 1,204 |
+| Middle | 35.53 | +0.0280 | 0.0370 | +0.76 | 46 | 1,183 |
+| Large | 248.56 | -0.0181 | 0.0315 | -0.58 | 45 | 1,156 |
+
+Of 3,909 scored issuer-days, 3,543 are in the rows;
+295 had a size but fell in a bucket-day below the minimum, and
+71 had no size: no packet, or fewer than 20 bars.
+
+These are three subsets of the headline. The table shows where any signal would
+sit; it does not test whether the buckets differ from one another, and a
+difference between two rows is not evidence that size matters.
+A row reaching |t| of 2 while the headline does not is one of three subsets
+crossing that bar, which is not unusual; the buckets were not tested against
+each other, and such a row is not a finding.
+
+## By insider type
+
+Rank correlation within routine and opportunistic insiders, after Cohen, Malloy
+and Pomorski (2012), "Decoding Inside Information", Journal of Finance. As there,
+the trader is classified, not the trade: for an event in year Y an insider is
+routine if there is a calendar month in which they made open-market trades in each
+of the three prior years, opportunistic if they traded in each of those years but in
+no common month, and unclassified otherwise. An event with several owners is
+classified only if they agree, and an issuer-day only if its classified events agree.
+The history is Forms 4 and 4/A from the 2023q1 to the 2026q1
+data sets; trades filed after 2026q1 are absent, and an event
+needs three prior calendar years of it to be classified.
+
+Departures from the paper: the insider is the owner at one issuer, not the person.
+History counts open-market purchases and sales in any non-derivative security,
+including trades under 10b5-1 plans, which the scored events exclude. The event's
+year is that of its acceptance, while history years come from transaction dates
+because events store no transaction date, so a trade made in late December and
+accepted in January can sit a year early.
+
+A type-day counts only with at least 10 issuers of that type.
+
+| Type | Mean | SE | t | Days | Issuer-days |
+|---|---|---|---|---|---|
+| Opportunistic | +0.0121 | 0.0526 | +0.23 | 24 | 338 |
+| Routine | +0.0233 | 0.0717 | +0.33 | 11 | 126 |
+
+Of 3,909 scored issuer-days, 464 are in the rows;
+3,033 were unclassified, 28 were mixed (their
+events disagreed), and
+384 were classified but fell in a type-day below the minimum.
+Excluded from the history: 25 history trades were dated after their filing.
+
+These are two subsets of the headline. The table shows where any signal would
+sit; it does not test whether the rows differ from one another, and a
+difference between them is not evidence that insider type matters.
 
 ## Calibration
 
