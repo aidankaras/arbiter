@@ -51,7 +51,7 @@ Modules that exist today:
 | `evaluation` | Abnormal return labels | — |
 | `arms` | Conventional baseline: features, fitting, out-of-sample scoring | `evaluation` |
 | `packets` | Packet schema, content hashing, point-in-time enforcement | `ingestion` |
-| `llm` | Usage metering and spend ceilings | `db` |
+| `llm` | Usage metering; spend-ceiling settings (enforcement not yet built) | `db` |
 | `db` | Models, session management, migrations | — |
 
 Modules the design calls for, not yet written. They are described here so the
@@ -141,16 +141,20 @@ serving it requires no always-on host.
 
 ## Cost and safety controls
 
-- Every model call records model, input tokens, cached tokens, output tokens, and
-  computed cost, attributed to the run and agent that made it. The ledger also
-  carries a packet hash and a prediction reference, so cost per decision can be
-  computed once the language-model arms make calls against packets; until then
-  those columns are empty.
-- A per-run token ceiling terminates a run that exceeds it. A prompt requesting
-  efficiency is advisory; a ceiling is enforced.
-- A daily spend ceiling halts the pipeline.
-- Filing text is passed as delimited, untrusted data and responses are
+*The usage ledger is built; the other controls are the design for the
+language-model arms and portfolios, and arrive with them.*
+
+- The usage ledger records, for each model call, the model, input tokens,
+  cached tokens, output tokens, and computed cost, attributed to the run and
+  agent that made it. It also carries a packet hash and a prediction reference,
+  so cost per decision can be computed once the language-model arms make calls
+  against packets; until then those columns are empty.
+- A per-run token ceiling will terminate a run that exceeds it, and a daily
+  spend ceiling will halt the pipeline. A prompt requesting efficiency is
+  advisory; a ceiling is enforced. Both ceilings are configured today and will
+  be enforced once the first language-model arm makes calls.
+- Filing text will be passed as delimited, untrusted data and responses will be
   schema-constrained, because filings are attacker-controllable input.
-- Arms emit conviction and direction. Order construction is deterministic code
-  with hard position and concentration limits, so no model output reaches the
-  broker unchecked.
+- Arms will emit conviction and direction. Order construction will be
+  deterministic code with hard position and concentration limits, so no model
+  output reaches the broker unchecked.

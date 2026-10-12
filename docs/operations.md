@@ -2,9 +2,10 @@
 
 ## Telemetry
 
-Scheduled runs export OpenTelemetry metrics and logs carrying per-request cost,
-token counts, model, and the originating subagent or skill. Any OTLP-compatible
-backend can receive them; the variables below target Langfuse Cloud.
+*Planned for the language-model arms; no model runs today.* Their runs will
+export OpenTelemetry metrics and logs carrying per-request cost, token counts,
+model, and the originating subagent or skill. Any OTLP-compatible backend can
+receive them; the variables below target Langfuse Cloud.
 
 ```bash
 export CLAUDE_CODE_ENABLE_TELEMETRY=1
@@ -22,8 +23,8 @@ export LANGFUSE_AUTH=$(echo -n "pk-lf-...:sk-lf-..." | base64 -w 0)
 ```
 
 Hosted trace retention is measured in weeks, so that backend serves interactive
-debugging only. The durable record is the `llm_calls` table, which every run
-writes to directly through `arbiter.llm.usage.record_run`.
+debugging only. The durable record is the `llm_calls` table, written directly
+through `arbiter.llm.usage.record_run`.
 
 ## Cost attribution
 
@@ -34,10 +35,13 @@ metric rather than an operational detail.
 
 ## Spend ceilings
 
-`DAILY_SPEND_CEILING_USD` and `PER_RUN_TOKEN_CEILING` are enforced in code before
-work is dispatched. Crossing either halts the run rather than reducing its scope,
-because quietly doing less work would make the run's results incomparable with
-earlier ones.
+*Configured but not yet enforced.* `DAILY_SPEND_CEILING_USD` and
+`PER_RUN_TOKEN_CEILING` are validated settings, and `arbiter check` reports the
+daily ceiling, but nothing spends yet, so nothing checks them. Enforcement arrives
+with the first language-model arm: the check will run in code before work is
+dispatched, and crossing either ceiling will halt the run rather than reduce its
+scope, because quietly doing less work would make the run's results incomparable
+with earlier ones.
 
 ## Migrations
 
