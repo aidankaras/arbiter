@@ -96,3 +96,25 @@ def test_agent_run_takes_max_calls_as_the_documented_option(
         ],
     )
     assert result.exit_code == 0, result.output
+
+
+def test_agent_compare_reads_the_forecasts_of_the_version_it_is_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The version hashes the code; an edit after the run must not hide its forecasts.
+    from arbiter.arms.agent import ledger
+    from arbiter.evaluation import comparison
+
+    asked: list[str] = []
+
+    class Ledger:
+        def forecasts(self, version: str) -> dict[str, float]:
+            asked.append(version)
+            raise typer.Exit(code=0)
+
+    monkeypatch.setattr("arbiter.cli._local_ledger", lambda _: None)
+    monkeypatch.setattr(ledger, "PgLedger", Ledger)
+    monkeypatch.setattr(comparison, "compare", lambda *_, **__: None)
+    monkeypatch.setattr("arbiter.cli.stored_days", lambda *_: [])
+    CliRunner().invoke(app, ["agent-compare", "--prompt-version", "0123456789abcdef"])
+    assert asked == ["0123456789abcdef"]
