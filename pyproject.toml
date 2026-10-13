@@ -47,6 +47,9 @@ ml = [
     "sentence-transformers>=3.3",
 ]
 broker = ["alpaca-py>=0.33"]
+# Embedded Postgres for running the append-only ledger on a machine without a
+# database server. Also in the dev group, where the test suite needs it.
+ledger = ["pgserver>=0.1.4"]
 
 [dependency-groups]
 dev = [

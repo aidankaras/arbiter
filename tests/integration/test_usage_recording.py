@@ -41,3 +41,19 @@ def test_recorded_cost_reconciles_with_the_run_total(migrated_database: str) -> 
             select(func.sum(LlmCall.cost_usd)).where(LlmCall.run_id == "2026-09-15-reconcile")
         ).scalar_one()
     assert abs(total - Decimal(str(payload["total_cost_usd"]))) < Decimal("0.000001")
+
+
+def test_cache_writes_and_the_evidence_read_are_recorded(migrated_database: str) -> None:
+    payload = json.loads(FIXTURE.read_text())
+    record_run(payload, run_id="2026-10-12-cache", packet_hash="d" * 64)
+    with session_scope() as session:
+        rows = (
+            session.execute(select(LlmCall).where(LlmCall.run_id == "2026-10-12-cache"))
+            .scalars()
+            .all()
+        )
+    assert {row.model_id: row.cache_creation_tokens for row in rows} == {
+        model_id: reported["cacheCreationInputTokens"]
+        for model_id, reported in payload["modelUsage"].items()
+    }
+    assert {row.packet_hash for row in rows} == {"d" * 64}

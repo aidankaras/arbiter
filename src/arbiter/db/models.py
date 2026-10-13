@@ -7,12 +7,14 @@ can be edited after its outcome is known is not evidence of anything.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Numeric,
@@ -77,6 +79,9 @@ class LlmCall(Base):
     input_tokens: Mapped[int]
     output_tokens: Mapped[int]
     cache_read_tokens: Mapped[int]
+    #: Tokens written to the prompt cache. A headless Claude Code call reports
+    #: nearly all of its input here rather than as uncached input.
+    cache_creation_tokens: Mapped[int] = mapped_column(default=0, server_default="0")
     cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 6))
     agent_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Cost per decision cannot be derived from a run identifier alone, because one
@@ -86,6 +91,37 @@ class LlmCall(Base):
     prediction_id: Mapped[int | None] = mapped_column(
         ForeignKey("predictions.id"), nullable=True
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AgentExclusion(Base):
+    """An issuer-day an agent arm attempted and could not score.
+
+    Recorded rather than dropped, because the comparison between arms removes
+    it from every arm and the report counts it by reason. Written once.
+    """
+
+    __tablename__ = "agent_exclusions"
+    __table_args__ = (
+        UniqueConstraint(
+            "issuer_day_hash", "arm", "prompt_version", name="uq_agent_exclusions_group"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_day: Mapped[date] = mapped_column(Date)
+    cik: Mapped[int] = mapped_column(BigInteger)
+    #: The forecast group's identity: filings either side of a market open
+    #: form two groups for one issuer and day.
+    issuer_day_hash: Mapped[str] = mapped_column(String(64))
+    arm: Mapped[str] = mapped_column(String(32))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    reason: Mapped[str] = mapped_column(String(32))
+    samples_valid: Mapped[int]
+    event_ids: Mapped[list[str]] = mapped_column(JSONB)
+    detail: Mapped[str] = mapped_column(String(2000), default="", server_default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

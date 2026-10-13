@@ -97,3 +97,54 @@ def test_missing_model_usage_block_raises():
     del payload["modelUsage"]
     with pytest.raises(ValueError, match="modelUsage"):
         parse_model_usage(payload)
+
+
+def test_cache_writes_are_parsed_per_model() -> None:
+    """Most of a headless call's input arrives as cache writes; dropping them
+    would meter a fraction of a percent of what the call read."""
+    payload = json.loads(FIXTURE.read_text())
+    records = {record.model_id: record for record in parse_model_usage(payload)}
+    for model_id, reported in payload["modelUsage"].items():
+        assert records[model_id].cache_creation_tokens == reported["cacheCreationInputTokens"]
+    # The premise: the fixture holds a model whose cache writes dominate its input.
+    assert any(
+        reported["cacheCreationInputTokens"] > 100 * reported["inputTokens"]
+        for reported in payload["modelUsage"].values()
+    )
+
+
+def test_total_tokens_counts_every_kind_of_token() -> None:
+    payload = json.loads(FIXTURE.read_text())
+    for record in parse_model_usage(payload):
+        reported = payload["modelUsage"][record.model_id]
+        assert record.total_tokens == (
+            reported["inputTokens"]
+            + reported["outputTokens"]
+            + reported["cacheReadInputTokens"]
+            + reported["cacheCreationInputTokens"]
+        )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "inputTokens",
+        "outputTokens",
+        "cacheReadInputTokens",
+        "cacheCreationInputTokens",
+        "costUSD",
+    ],
+)
+def test_a_missing_per_model_field_raises_naming_it(field: str):
+    payload = _payload()
+    del next(iter(payload["modelUsage"].values()))[field]
+    with pytest.raises(ValueError, match=field):
+        parse_model_usage(payload)
+
+
+def test_a_run_reporting_no_per_model_usage_raises():
+    # A call that ran but reported no usage would otherwise be metered as nothing.
+    payload = _payload()
+    payload["modelUsage"] = {}
+    with pytest.raises(ValueError, match="modelUsage"):
+        parse_model_usage(payload)

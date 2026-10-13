@@ -147,6 +147,9 @@ api = [
 broker = [
     { name = "alpaca-py" },
 ]
+ledger = [
+    { name = "pgserver" },
+]
 llm = [
     { name = "anthropic" },
     { name = "claude-agent-sdk" },
@@ -189,6 +192,7 @@ requires-dist = [
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.57" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "peft", marker = "extra == 'ml'", specifier = ">=0.14" },
+    { name = "pgserver", marker = "extra == 'ledger'", specifier = ">=0.1.4" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pyarrow", specifier = ">=18.0" },
     { name = "pydantic", specifier = ">=2.9" },
@@ -204,7 +208,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.32" },
     { name = "xgboost", marker = "extra == 'ml'", specifier = ">=2.1" },
 ]
-provides-extras = ["api", "llm", "ml", "broker"]
+provides-extras = ["api", "llm", "ml", "broker", "ledger"]
 
 [package.metadata.requires-dev]
 dev = [
