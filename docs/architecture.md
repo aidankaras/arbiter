@@ -50,8 +50,9 @@ Modules that exist today:
 | `events` | Trigger evaluation, event normalization | `ingestion` |
 | `evaluation` | Abnormal return labels | — |
 | `arms` | Conventional baseline: features, fitting, out-of-sample scoring | `evaluation` |
+| `arms.agent` | Language-model analyst: prompt, isolated runtime, runner, ledger access | `packets`, `llm`, `db` |
 | `packets` | Packet schema, content hashing, point-in-time enforcement | `ingestion` |
-| `llm` | Usage metering; spend-ceiling settings (enforcement not yet built) | `db` |
+| `llm` | Usage metering and spend ceilings | `db` |
 | `db` | Models, session management, migrations | — |
 
 Modules the design calls for, not yet written. They are described here so the
@@ -61,7 +62,7 @@ first module is:
 | Planned module | Responsibility |
 |---|---|
 | `retrieval` | Vector and relational comparable lookup, as-of filtering |
-| `arms` (language-model arms) | The three model-driven approaches; only the conventional baseline exists |
+| `arms` (further arms) | The neural and arbiter arms, and the agent team beyond the single analyst |
 | `portfolio` | Sizing, risk limits, shadow books, broker adapter |
 | `reporting` | Weekly report generation |
 | `api` | Dashboard data publication |
@@ -141,20 +142,23 @@ serving it requires no always-on host.
 
 ## Cost and safety controls
 
-*The usage ledger is built; the other controls are the design for the
-language-model arms and portfolios, and arrive with them.*
+*Built for the agent arm except the last item, which arrives with the
+portfolios.*
 
 - The usage ledger records, for each model call, the model, input tokens,
   cached tokens, output tokens, and computed cost, attributed to the run and
   agent that made it. It also carries a packet hash and a prediction reference,
   so cost per decision can be computed once the language-model arms make calls
   against packets; until then those columns are empty.
-- A per-run token ceiling will terminate a run that exceeds it, and a daily
-  spend ceiling will halt the pipeline. A prompt requesting efficiency is
-  advisory; a ceiling is enforced. Both ceilings are configured today and will
-  be enforced once the first language-model arm makes calls.
-- Filing text will be passed as delimited, untrusted data and responses will be
-  schema-constrained, because filings are attacker-controllable input.
+- A per-run token ceiling and a daily spend ceiling halt a run before it
+  dispatches work that would cross them. A prompt requesting efficiency is
+  advisory; a ceiling is enforced.
+- Filing text is passed as delimited, untrusted data, a closing delimiter inside
+  it is neutralised, and responses are schema-constrained and re-validated,
+  because filings are attacker-controllable input.
+- Every model call is checked, from its own startup event, to have run with no
+  tool but the one that returns its answer, no MCP servers, and the pinned
+  model; a call that did not stops the run.
 - Arms will emit conviction and direction. Order construction will be
   deterministic code with hard position and concentration limits, so no model
   output reaches the broker unchecked.

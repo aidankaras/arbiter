@@ -35,13 +35,33 @@ metric rather than an operational detail.
 
 ## Spend ceilings
 
-*Configured but not yet enforced.* `DAILY_SPEND_CEILING_USD` and
-`PER_RUN_TOKEN_CEILING` are validated settings, and `arbiter check` reports the
-daily ceiling, but nothing spends yet, so nothing checks them. Enforcement arrives
-with the first language-model arm: the check will run in code before work is
-dispatched, and crossing either ceiling will halt the run rather than reduce its
-scope, because quietly doing less work would make the run's results incomparable
-with earlier ones.
+`DAILY_SPEND_CEILING_USD` and `PER_RUN_TOKEN_CEILING` are checked by the agent
+arm before each forecast group is dispatched, against the worst case that group
+can cost: every sample retried once, each priced at the most expensive call the
+run has seen so far. The daily total resets at midnight Eastern. Crossing either
+ceiling halts the run rather than reducing its scope, because quietly doing less
+work would make the run's results incomparable with earlier ones.
+
+Costs are what Claude Code reports for each call. On a subscription they are
+notional, so the binding limit is usually the subscription's own usage windows:
+every call reports how much of its five-hour and seven-day windows is used, and
+`--max-weekly-utilization` (default 0.80) stops a run once the seven-day window
+reaches it, leaving the rest of the week's allowance for other work.
+
+## The local ledger
+
+The ledger's guarantees are enforced by Postgres triggers and constraints, so it
+needs real Postgres. On a machine without a database server, `uv sync --extra
+ledger` installs an embedded one, and
+
+```bash
+uv run arbiter ledger-up
+```
+
+starts it in `data/ledger/`, applies every migration, and prints the
+`DATABASE_URL` to put in `.env`. The URL is stable for that directory. The server
+keeps running after the command exits but not across a reboot, which is why the
+agent commands start it themselves when it is down.
 
 ## Migrations
 

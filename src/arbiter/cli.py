@@ -353,6 +353,130 @@ def ledger_up(ledger_dir: str = "data/ledger") -> None:
     typer.echo(f'DATABASE_URL="{url}"')
 
 
+def _agent_days(packet_root: Path, start: date, end: date) -> list[date]:
+    """Days in [start, end] whose insider packets were built."""
+    return sorted(
+        day
+        for path in (packet_root / "insider").glob("*.jsonl.gz")
+        if start <= (day := date.fromisoformat(path.name.removesuffix(".jsonl.gz"))) <= end
+    )
+
+
+def _local_ledger(ledger_dir: Path) -> Settings:
+    """Start the local ledger and confirm the settings point at it, or exit."""
+    from arbiter.db.local import ensure_local_ledger
+
+    settings = _settings_or_exit()
+    url = ensure_local_ledger(ledger_dir)
+    if settings.database_url != url:
+        typer.echo(f"DATABASE_URL must point at the local ledger:\n  {url}", err=True)
+        typer.echo("Run `arbiter ledger-up` and put that line in .env.", err=True)
+        raise typer.Exit(code=2)
+    return settings
+
+
+def _run_agent(
+    days: list[date],
+    packet_root: Path,
+    ledger_dir: Path,
+    max_calls: int,
+    max_weekly_utilization: float,
+) -> None:
+    """Shared body of `agent-pilot` and `agent-run`."""
+    from datetime import UTC, datetime
+
+    from arbiter.arms.agent.ledger import PgLedger
+    from arbiter.arms.agent.prompt import prompt_version
+    from arbiter.arms.agent.run import Limits, run_days
+    from arbiter.arms.agent.runtime import ClaudeCodeRuntime
+    from arbiter.packets.store import read_packets
+
+    if not days:
+        typer.echo("no packet days in range", err=True)
+        raise typer.Exit(code=2)
+    settings = _local_ledger(ledger_dir)
+
+    limits = Limits(
+        daily_spend_usd=settings.daily_spend_ceiling_usd,
+        run_tokens=settings.per_run_token_ceiling,
+        max_calls=max_calls,
+        max_weekly_utilization=max_weekly_utilization,
+    )
+    run_id = f"agent-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
+    report = run_days(
+        days,
+        lambda day: read_packets(packet_root, "insider", day),
+        ClaudeCodeRuntime(),
+        PgLedger(),
+        limits,
+        run_id=run_id,
+        now=lambda: datetime.now(UTC),
+    )
+    typer.echo(f"run: {run_id}  prompt version: {prompt_version()}")
+    typer.echo(f"days: {days[0]} .. {days[-1]} ({len(days)})")
+    typer.echo(
+        f"forecasts: {report.forecasts}  exclusions: {report.exclusions}  "
+        f"skipped: {report.skipped}  calls: {report.calls}"
+    )
+    typer.echo(f"usage windows: {report.utilization_start} -> {report.utilization_end}")
+    if report.halted:
+        typer.echo(f"halted: {report.halted}")
+
+
+@app.command(name="agent-pilot")
+def agent_pilot(
+    day: str,
+    max_calls: int = 400,
+    max_weekly_utilization: float = 0.80,
+    packet_root: str = "data/packets",
+    ledger_dir: str = "data/ledger",
+) -> None:
+    """Forecast one development day, to measure what a day of the arm costs.
+
+    Refuses a day in the scored window: the pilot is where the prompt may still
+    change, so it must never see a day the result will be measured on.
+    """
+    from arbiter.arms.agent.run import SCORED_FROM
+
+    pilot_day = date.fromisoformat(day)
+    if pilot_day >= SCORED_FROM:
+        typer.echo(
+            f"{day} is in the scored window (from {SCORED_FROM}); pick a June day", err=True
+        )
+        raise typer.Exit(code=2)
+    _run_agent(
+        _agent_days(Path(packet_root), pilot_day, pilot_day),
+        Path(packet_root),
+        Path(ledger_dir),
+        max_calls,
+        max_weekly_utilization,
+    )
+
+
+@app.command(name="agent-run")
+def agent_run(
+    max_calls: int,
+    end: str = "2026-09-09",
+    max_weekly_utilization: float = 0.80,
+    packet_root: str = "data/packets",
+    ledger_dir: str = "data/ledger",
+) -> None:
+    """Forecast the scored window, resuming wherever the ledger left off.
+
+    `--max-calls` is required: how much of the allowance one invocation may
+    use is a decision made per run, from the pilot's measurement.
+    """
+    from arbiter.arms.agent.run import SCORED_FROM
+
+    _run_agent(
+        _agent_days(Path(packet_root), SCORED_FROM, date.fromisoformat(end)),
+        Path(packet_root),
+        Path(ledger_dir),
+        max_calls,
+        max_weekly_utilization,
+    )
+
+
 @app.command()
 def backfill(
     start: str,

@@ -19,8 +19,8 @@ def ensure_local_ledger(data_dir: Path) -> str:
     """Start the ledger server for `data_dir`, or attach to it, and return its URL.
 
     The server outlives this process, and the URL is stable for a given
-    directory. It does not survive a reboot: after one, run `ledger-up` again
-    before any command that reads `DATABASE_URL`, since nothing else starts it.
+    directory. It does not survive a reboot: `ledger-up` and the agent commands
+    start it again, and other commands that read `DATABASE_URL` do not.
 
     Raises:
         ModuleNotFoundError: the `ledger` extra is not installed.

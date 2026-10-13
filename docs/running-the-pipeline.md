@@ -102,3 +102,24 @@ block began. The split is by date, never random: a random split would place
 events from one day on both sides and report as skill what is partly memory.
 [`methodology.md`](methodology.md) covers
 the evaluation design in full.
+
+## Running the agent arm
+
+The analyst is Claude Sonnet 5 (`claude-sonnet-5`), run through headless Claude
+Code on a subscription. It is pinned because it was released on 2026-06-30, so no
+scored filing (from 2026-07-01) can be in what it was trained on. Earlier days are
+the development set.
+
+```bash
+uv sync --extra ledger
+uv run arbiter ledger-up                     # once per boot; put the URL in .env
+uv run arbiter agent-pilot 2026-06-15        # one development day
+uv run arbiter agent-run --max-calls 600     # the scored window, resumable
+```
+
+`agent-pilot` refuses any day in the scored window. `agent-run` resumes wherever
+the ledger left off, and stops cleanly at its call cap, at the spend or token
+ceilings, at the weekly usage ceiling, or when a usage window is exhausted.
+Each forecast group gets three independent samples; one that is invalid or
+refused is retried once, and a group still short of three is recorded as
+excluded rather than averaged over fewer.
