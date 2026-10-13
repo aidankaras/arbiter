@@ -81,3 +81,7 @@ def test_another_arms_predictions_are_invisible_to_the_agent(migrated_database: 
     ledger = PgLedger()
     assert ledger.predicted("pg-arms", ["arm-1"]) == set()
     assert ledger.forecasts("pg-arms") == {}
+
+
+def test_excluded_events_are_found_by_filing(migrated_database: str) -> None:
+    contract.check_excluded_events_are_found_by_filing(PgLedger(), "pg-excluded-events")

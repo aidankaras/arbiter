@@ -65,6 +65,10 @@ class Ledger(Protocol):
         """Whether this forecast group was already recorded as excluded."""
         ...
 
+    def excluded_events(self, prompt_version: str, event_ids: Sequence[str]) -> set[str]:
+        """Return which of `event_ids` belong to any recorded exclusion."""
+        ...
+
     def write_forecast(
         self, model_id: str, prompt_version: str, rows: Sequence[ForecastRow]
     ) -> None:
@@ -124,6 +128,18 @@ class PgLedger:
                 )
             ).scalar_one()
             return count > 0
+
+    def excluded_events(self, prompt_version: str, event_ids: Sequence[str]) -> set[str]:
+        """Return which of `event_ids` belong to any recorded exclusion."""
+        # ponytail: reads every exclusion of the version; a few hundred at most.
+        with session_scope() as session:
+            recorded = session.execute(
+                select(AgentExclusion.event_ids).where(
+                    AgentExclusion.arm == ARM, AgentExclusion.prompt_version == prompt_version
+                )
+            ).scalars()
+            excluded = {event_id for ids in recorded for event_id in ids}
+        return excluded & set(event_ids)
 
     def write_forecast(
         self, model_id: str, prompt_version: str, rows: Sequence[ForecastRow]

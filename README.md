@@ -48,11 +48,12 @@ store; [`reports/withdrawn/`](reports/withdrawn/) keeps it and the reason.
 | Baseline arm (logistic regression) and out-of-sample evaluation | Built |
 | Append-only prediction ledger and spend metering | Built |
 | Comparable retrieval | Not built |
-| Neural, agent and arbiter arms | Not built |
+| Agent arm: one analyst, three samples per issuer-day (scored run pending) | Built |
+| Neural and arbiter arms, agent team | Not built |
 | Shadow portfolios and dashboard | Not built |
 | Earnings strategy (XBRL) | Not built |
 
-The agent arm is next. Sections below describing unbuilt parts use the future
+The agent arm's scored run is next. Sections below describing unbuilt parts use the future
 tense; anything in the present tense refers to code in this repository. Paper
 trading only, always.
 

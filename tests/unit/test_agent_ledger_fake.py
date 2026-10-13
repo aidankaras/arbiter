@@ -24,3 +24,7 @@ def test_forecasts_and_exclusions_read_back_by_version() -> None:
 
 def test_an_exclusion_is_written_once_per_version() -> None:
     contract.check_an_exclusion_is_written_once_per_version(FakeLedger(), "v1")
+
+
+def test_excluded_events_are_found_by_filing() -> None:
+    contract.check_excluded_events_are_found_by_filing(FakeLedger(), "v1")

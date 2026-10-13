@@ -291,6 +291,6 @@ def test_the_import_check_catches_a_forbidden_import() -> None:
     ]
 
 
-@pytest.mark.parametrize("module", ["prompt.py", "runtime.py", "ledger.py"])
+@pytest.mark.parametrize("module", ["prompt.py", "runtime.py", "run.py", "ledger.py"])
 def test_no_agent_module_can_reach_an_outcome_or_another_arm(module: str) -> None:
     assert forbidden_imports((AGENT_SOURCES / module).read_text()) == []
