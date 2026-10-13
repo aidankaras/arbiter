@@ -133,4 +133,10 @@ excluded rather than averaged over fewer. `agent-compare` scores both arms on th
 issuer-days where the agent forecast every labelled filing, and reports the
 paired daily difference with the same overlap-robust standard error as the
 baseline's own report. The prompt version hashes the prompt and runtime code, so after
-either changes, pass the version the run printed: `agent-compare --prompt-version <v>`.
+either changes, pass the version the run printed: `agent-compare --prompt-version <v>`. The
+baseline is trained only on days up to the window's end, so data stored later
+never moves it. Every window issuer-day is either compared, dropped (the agent
+did not forecast all its filings) or unranked (a day left too thin, or one the
+agent forecast flat), and the three are printed. While the run is still in
+progress the command prints the numbers so far, then exits with code 4 and
+says how many window days the agent has not run.

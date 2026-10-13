@@ -517,15 +517,23 @@ def agent_compare(
 
     _local_ledger(Path(ledger_dir))
     version = prompt_version_ or prompt_version()
+    typer.echo(f"prompt version: {version}")
     ledger = PgLedger()
+    forecasts = ledger.forecasts(version)
+    if not forecasts:
+        typer.echo(
+            f"no agent forecasts under prompt version {version}; "
+            "pass the version the run printed with --prompt-version",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     days = load_days(Path(root), "insider", stored_days(Path(root), "insider"))
     result = compare(
         days,
-        ledger.forecasts(version),
+        forecasts,
         (SCORED_FROM, date.fromisoformat(end)),
         overlap_lags=HORIZONS["insider"],
     )
-    typer.echo(f"prompt version: {version}")
     for name, summary in (
         ("agent", result.agent),
         ("baseline", result.baseline),
@@ -537,9 +545,22 @@ def agent_compare(
         )
     typer.echo(
         f"issuer-days compared: {result.issuer_days}  "
-        f"dropped (agent incomplete): {result.dropped_issuer_days}"
+        f"dropped (agent incomplete): {result.dropped_issuer_days}  "
+        f"unranked: {result.unranked_issuer_days}  "
+        f"days the agent forecast flat: {result.agent_undefined_days}"
     )
-    typer.echo(f"exclusions by reason: {ledger.exclusion_counts(version)}")
+    typer.echo(
+        f"exclusions by reason (this version, all days): {ledger.exclusion_counts(version)}"
+    )
+    if result.days_not_run:
+        # Printed while the paced run is in progress, so the numbers above are
+        # useful for watching it; never the pre-registered result.
+        typer.echo(
+            f"incomplete: the agent has not run {result.days_not_run} of "
+            f"{result.window_days} window days; this is not the comparison",
+            err=True,
+        )
+        raise typer.Exit(code=4)
 
 
 @app.command()

@@ -11,6 +11,7 @@ different evidence.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
@@ -40,10 +41,22 @@ class Comparison:
     baseline: ICSummary
     #: Agent minus baseline, day by day, over days where both are defined.
     difference: ICSummary
+    #: Issuer-days both arms were scored on.
     issuer_days: int
-    #: Issuer-days the baseline could score that left the comparison because
-    #: the agent had not forecast every labelled filing in them.
+    #: Window issuer-days that left both arms because the agent had not
+    #: forecast every labelled filing in them.
     dropped_issuer_days: int
+    #: Window issuer-days the agent did forecast that neither arm could rank:
+    #: on a day left with too few issuers, or a day the agent forecast flat.
+    #: Window issuer-days = issuer_days + dropped + unranked, always.
+    unranked_issuer_days: int
+    #: Days dropped from every line because the agent's coefficient was
+    #: undefined (the same forecast for every issuer that day).
+    agent_undefined_days: int
+    #: Window days with labelled filings, and those on which the agent forecast
+    #: none of them: a run still in progress, not a finding.
+    window_days: int
+    days_not_run: int
 
 
 def daily_ic(
@@ -89,27 +102,38 @@ def compare(
 ) -> Comparison:
     """Pair the agent with the walk-forward baseline over `window`, inclusive.
 
-    `days` is every stored day, so the baseline trains walk-forward as it does
-    for its own report; only window days are compared.
+    The baseline trains walk-forward on every stored day up to the window's end,
+    as it does for its own report. Days stored after the window are left out:
+    the walk-forward's initial cut and refit blocks are counted in days, so
+    they would otherwise move the baseline a frozen agent run is compared with.
+    All three lines of the result cover the same days: those where both arms
+    have a coefficient.
 
     Raises:
-        WindowNotScoredError: a window day with events is not a scored day of
-            the baseline's walk-forward, so it would have no baseline forecast.
-        ValueError: a window day was loaded without accession numbers.
+        ValueError: the window ends before it starts, or a window day was
+            loaded without accession numbers.
+        WindowNotScoredError: no window day has labelled events, or one that
+            does is not a scored day of the baseline's walk-forward.
         InsufficientObservationsError: fewer than two days carry a coefficient.
     """
+    first, last = window
+    if last < first:
+        msg = f"the window ends before it starts: {first} to {last}"
+        raise ValueError(msg)
+    history = [day for day in days if day.day <= last]
     scored: dict[date, list[float]] = {}
-    for _, _, block in forecast_walk_forward(days):
+    for _, _, block in forecast_walk_forward(history):
         scored.update(block)
 
-    first, last = window
     kept_days: list[DayOfEvents] = []
     agent_rows: dict[date, list[float]] = {}
     baseline_rows: dict[date, list[float]] = {}
-    dropped = 0
-    for day in days:
-        if not first <= day.day <= last or len(day) == 0:
+    dropped = window_issuer_days = window_days = days_not_run = 0
+    for day in history:
+        if day.day < first or len(day) == 0:
             continue
+        window_days += 1
+        window_issuer_days += len(set(day.issuers))
         if day.day not in scored:
             msg = f"{day.day} has events but no baseline forecast: it is not a scored day"
             raise WindowNotScoredError(msg)
@@ -126,6 +150,8 @@ def compare(
             )
         }
         dropped += len(set(day.issuers) - covered)
+        if not any(accession in agent_by_accession for accession in day.accessions):
+            days_not_run += 1
         rows = [i for i, issuer in enumerate(day.issuers) if issuer in covered]
         if not rows:
             continue
@@ -134,18 +160,37 @@ def compare(
         agent_rows[day.day] = [agent_by_accession[a] for a in kept.accessions]
         baseline_rows[day.day] = [scored[day.day][i] for i in rows]
 
-    agent_daily, issuer_days = daily_ic(kept_days, agent_rows)
+    if window_days == 0:
+        msg = f"no window day from {first} to {last} has labelled events"
+        raise WindowNotScoredError(msg)
+
+    agent_daily, _ = daily_ic(kept_days, agent_rows)
     baseline_daily, _ = daily_ic(kept_days, baseline_rows)
-    paired = {
-        day: agent_daily[day] - baseline_daily[day]
-        for day in agent_daily.keys() & baseline_daily.keys()
-    }
+    # Only days where both arms rank: an arm's line over other days would not
+    # be comparable with the other's, and the difference would not be theirs.
+    both = {d for d in agent_daily.keys() & baseline_daily.keys() if _defined(agent_daily[d])}
+    both &= {d for d in baseline_daily if _defined(baseline_daily[d])}
+    agent_undefined = sum(1 for d in agent_daily if not _defined(agent_daily[d]))
+    issuer_days = sum(len(set(day.issuers)) for day in kept_days if day.day in both)
+    kept_issuer_days = sum(len(set(day.issuers)) for day in kept_days)
+
+    def summary(daily: Mapping[date, float]) -> ICSummary:
+        return summarise_ic(
+            {d: daily[d] for d in both}, observations=issuer_days, overlap_lags=overlap_lags
+        )
+
     return Comparison(
-        agent=summarise_ic(agent_daily, observations=issuer_days, overlap_lags=overlap_lags),
-        baseline=summarise_ic(
-            baseline_daily, observations=issuer_days, overlap_lags=overlap_lags
-        ),
-        difference=summarise_ic(paired, observations=issuer_days, overlap_lags=overlap_lags),
+        agent=summary(agent_daily),
+        baseline=summary(baseline_daily),
+        difference=summary({d: agent_daily[d] - baseline_daily[d] for d in both}),
         issuer_days=issuer_days,
         dropped_issuer_days=dropped,
+        unranked_issuer_days=kept_issuer_days - issuer_days,
+        agent_undefined_days=agent_undefined,
+        window_days=window_days,
+        days_not_run=days_not_run,
     )
+
+
+def _defined(value: float) -> bool:
+    return not math.isnan(value)
