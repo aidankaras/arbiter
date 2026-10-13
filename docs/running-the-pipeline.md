@@ -115,6 +115,7 @@ uv sync --extra ledger
 uv run arbiter ledger-up                     # once per boot; put the URL in .env
 uv run arbiter agent-pilot 2026-06-15        # one development day
 uv run arbiter agent-run --max-calls 600     # the scored window, resumable
+uv run arbiter agent-compare                 # agent against baseline, paired
 ```
 
 `agent-pilot` refuses any day in the scored window, and both commands refuse a
@@ -128,4 +129,14 @@ late filing) is counted as `changed` and left alone; the comparison drops it
 from both arms.
 Each forecast group gets three independent samples; one that is invalid or
 refused is retried once, and a group still short of three is recorded as
-excluded rather than averaged over fewer.
+excluded rather than averaged over fewer. `agent-compare` scores both arms on the
+issuer-days where the agent forecast every labelled filing, and reports the
+paired daily difference with the same overlap-robust standard error as the
+baseline's own report. The prompt version hashes the prompt and runtime code, so after
+either changes, pass the version the run printed: `agent-compare --prompt-version <v>`. The
+baseline is trained only on days up to the window's end, so data stored later
+never moves it. Every window issuer-day is either compared, dropped (the agent
+did not forecast all its filings) or unranked (a day left too thin, or one the
+agent forecast flat), and the three are printed. While the run is still in
+progress the command prints the numbers so far, then exits with code 4 and
+says how many window days the agent has not run.

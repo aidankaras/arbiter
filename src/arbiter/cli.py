@@ -492,6 +492,77 @@ def agent_run(
     )
 
 
+@app.command(name="agent-compare")
+def agent_compare(
+    end: str = "2026-09-09",
+    prompt_version_: str | None = typer.Option(
+        None,
+        "--prompt-version",
+        help="Version the run was made under; defaults to the current code's.",
+    ),
+    root: str = "data/events",
+    ledger_dir: str = "data/ledger",
+) -> None:
+    """Compare the agent with the walk-forward baseline over the scored window.
+
+    Both arms are scored on the issuer-days where the agent forecast every
+    labelled filing; the headline is the paired daily difference. The version
+    hashes the prompt and runtime code, so a comparison made after either was
+    edited must name the version the run was made under.
+    """
+    from arbiter.arms.agent.ledger import PgLedger
+    from arbiter.arms.agent.prompt import prompt_version
+    from arbiter.arms.agent.run import SCORED_FROM
+    from arbiter.evaluation.comparison import compare
+
+    _local_ledger(Path(ledger_dir))
+    version = prompt_version_ or prompt_version()
+    typer.echo(f"prompt version: {version}")
+    ledger = PgLedger()
+    forecasts = ledger.forecasts(version)
+    if not forecasts:
+        typer.echo(
+            f"no agent forecasts under prompt version {version}; "
+            "pass the version the run printed with --prompt-version",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    days = load_days(Path(root), "insider", stored_days(Path(root), "insider"))
+    result = compare(
+        days,
+        forecasts,
+        (SCORED_FROM, date.fromisoformat(end)),
+        overlap_lags=HORIZONS["insider"],
+    )
+    for name, summary in (
+        ("agent", result.agent),
+        ("baseline", result.baseline),
+        ("agent - baseline", result.difference),
+    ):
+        typer.echo(
+            f"{name:>17}: IC {summary.mean:+.4f}  SE {summary.standard_error:.4f}  "
+            f"t {summary.t_statistic:+.2f}  days {summary.days}"
+        )
+    typer.echo(
+        f"issuer-days compared: {result.issuer_days}  "
+        f"dropped (agent incomplete): {result.dropped_issuer_days}  "
+        f"unranked: {result.unranked_issuer_days}  "
+        f"days the agent forecast flat: {result.agent_undefined_days}"
+    )
+    typer.echo(
+        f"exclusions by reason (this version, all days): {ledger.exclusion_counts(version)}"
+    )
+    if result.days_not_run:
+        # Printed while the paced run is in progress, so the numbers above are
+        # useful for watching it; never the pre-registered result.
+        typer.echo(
+            f"incomplete: the agent has not run {result.days_not_run} of "
+            f"{result.window_days} window days; this is not the comparison",
+            err=True,
+        )
+        raise typer.Exit(code=4)
+
+
 @app.command()
 def backfill(
     start: str,

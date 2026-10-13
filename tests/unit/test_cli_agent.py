@@ -96,3 +96,85 @@ def test_agent_run_takes_max_calls_as_the_documented_option(
         ],
     )
     assert result.exit_code == 0, result.output
+
+
+def test_agent_compare_reads_the_forecasts_of_the_version_it_is_given(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The version hashes the code; an edit after the run must not hide its forecasts.
+    from arbiter.arms.agent import ledger
+    from arbiter.evaluation import comparison
+
+    asked: list[str] = []
+
+    class Ledger:
+        def forecasts(self, version: str) -> dict[str, float]:
+            asked.append(version)
+            raise typer.Exit(code=0)
+
+    monkeypatch.setattr("arbiter.cli._local_ledger", lambda _: None)
+    monkeypatch.setattr(ledger, "PgLedger", Ledger)
+    monkeypatch.setattr(comparison, "compare", lambda *_, **__: None)
+    monkeypatch.setattr("arbiter.cli.stored_days", lambda *_: [])
+    CliRunner().invoke(app, ["agent-compare", "--prompt-version", "0123456789abcdef"])
+    assert asked == ["0123456789abcdef"]
+
+
+def _stub_compare_inputs(monkeypatch: pytest.MonkeyPatch, forecasts: dict[str, float]) -> None:
+    from arbiter.arms.agent import ledger
+
+    class Ledger:
+        def forecasts(self, version: str) -> dict[str, float]:
+            return forecasts
+
+        def exclusion_counts(self, version: str) -> dict[str, int]:
+            return {}
+
+    monkeypatch.setattr("arbiter.cli._local_ledger", lambda _: None)
+    monkeypatch.setattr(ledger, "PgLedger", Ledger)
+    monkeypatch.setattr("arbiter.cli.stored_days", lambda *_: [])
+    monkeypatch.setattr("arbiter.cli.load_days", lambda *_: [])
+
+
+def test_agent_compare_names_a_version_with_no_forecasts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_compare_inputs(monkeypatch, {})
+    result = CliRunner().invoke(app, ["agent-compare", "--prompt-version", "feedfacefeedface"])
+    assert result.exit_code == 2
+    assert "no agent forecasts" in result.output and "feedfacefeedface" in result.output
+
+
+def test_agent_compare_scores_the_preregistered_window_with_the_horizon_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from arbiter.evaluation import comparison
+
+    seen: dict[str, object] = {}
+
+    def record(days: object, agent: object, window: object, *, overlap_lags: int) -> None:
+        seen.update(window=window, overlap_lags=overlap_lags)
+        raise typer.Exit(code=0)
+
+    _stub_compare_inputs(monkeypatch, {"a": 0.5})
+    monkeypatch.setattr(comparison, "compare", record)
+    CliRunner().invoke(app, ["agent-compare"])
+    assert seen == {"window": (run.SCORED_FROM, date(2026, 9, 9)), "overlap_lags": 5}
+
+
+def test_agent_compare_on_a_partly_run_window_says_so_and_exits_non_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from arbiter.evaluation import comparison
+
+    summary = SimpleNamespace(mean=0.1, standard_error=0.01, t_statistic=10.0, days=2)
+    partial = SimpleNamespace(
+        agent=summary, baseline=summary, difference=summary, issuer_days=100,
+        dropped_issuer_days=3000, unranked_issuer_days=0, agent_undefined_days=0,
+        window_days=49, days_not_run=47,
+    )  # fmt: skip
+    _stub_compare_inputs(monkeypatch, {"a": 0.5})
+    monkeypatch.setattr(comparison, "compare", lambda *_, **__: partial)
+    result = CliRunner().invoke(app, ["agent-compare"])
+    assert result.exit_code == 4
+    assert "47 of 49" in result.output

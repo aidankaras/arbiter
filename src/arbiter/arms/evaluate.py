@@ -79,6 +79,10 @@ class DayOfEvents:
     #: Events filed that day that resolved to no outcome, every one of them
     #: recorded as an exclusion by the labeling pass.
     unlabelled: int = 0
+    #: Each row's accession number: how a forecast stored per filing, such as
+    #: the agent arm's, finds the rows it covers. Empty for days built in tests
+    #: that do not need it.
+    accessions: list[str] = field(default_factory=list[str])
 
     def __len__(self) -> int:
         return len(self.features)
@@ -236,6 +240,7 @@ def load_day(root: Path, domain: str, day: date) -> DayOfEvents | None:
         issuers=[int(events[index]["cik"]) for index in kept],
         exit_sessions=[exits[str(events[index]["accession_no"])] for index in kept],
         unlabelled=unlabelled,
+        accessions=[str(events[index]["accession_no"]) for index in kept],
     )
 
 
