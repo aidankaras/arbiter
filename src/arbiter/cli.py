@@ -333,6 +333,26 @@ def report(
     )
 
 
+@app.command(name="ledger-up")
+def ledger_up(ledger_dir: str = "data/ledger") -> None:
+    """Start the local ledger, apply migrations, and print the URL to export.
+
+    Run once per boot. The server keeps running after this command exits, and
+    its URL does not change for a given directory, so it can live in `.env`.
+    """
+    import os
+
+    from arbiter.db.local import ensure_local_ledger, upgrade_to_head
+    from arbiter.db.session import get_engine
+
+    url = ensure_local_ledger(Path(ledger_dir))
+    os.environ["DATABASE_URL"] = url
+    get_settings.cache_clear()
+    get_engine.cache_clear()
+    upgrade_to_head()
+    typer.echo(f'DATABASE_URL="{url}"')
+
+
 @app.command()
 def backfill(
     start: str,
