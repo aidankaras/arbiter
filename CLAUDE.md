@@ -21,8 +21,9 @@ a bug even if every test passes.
 
 1. **Evidence packets are immutable and content-hashed.** Every prediction stores
    the hash of the packet it came from. Never mutate a packet after construction.
-2. **Nothing downstream of the packet fetches.** The agent analyst, when built, is
-   constructed with an empty tool list. Build it that way; the boundary is what makes the
+2. **Nothing downstream of the packet fetches.** The agent analyst holds no tool but the
+   one that returns its structured answer, checked from every call's startup event
+   (`arms/agent/runtime.py`). Keep it that way; the boundary is what makes the
    four-arm comparison valid.
 3. **Every retrieval is timestamp-filtered.** Comparable lookups carry the event's
    `as_of` and exclude anything that had not resolved by then. Enforce this in the
