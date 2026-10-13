@@ -53,7 +53,8 @@ store; [`reports/withdrawn/`](reports/withdrawn/) keeps it and the reason.
 | Shadow portfolios and dashboard | Not built |
 | Earnings strategy (XBRL) | Not built |
 
-The agent arm's scored run is next. Sections below describing unbuilt parts use the future
+The agent arm's scored run is next; its protocol is in
+[`docs/agent-arm.md`](docs/agent-arm.md). Sections below describing unbuilt parts use the future
 tense; anything in the present tense refers to code in this repository. Paper
 trading only, always.
 
@@ -74,13 +75,13 @@ command records and why.
 
 ## The four arms
 
-Each event will be scored by four approaches that see byte-identical inputs. One is built:
+Each event will be scored by four approaches that see byte-identical inputs. Two are built:
 
 | Arm | Approach | Sees text | Uses an LLM | Built |
 |---|---|---|---|---|
 | `baseline` | Logistic regression over structured filing features | No | No | Yes |
 | `dl` | Fine-tuned transformer encoder with a tabular head | Yes | No | No |
-| `agent` | Agent team with per-domain analysts | Yes | Yes | No |
+| `agent` | One analyst, three samples per issuer-day; a team with per-domain analysts later | Yes | Yes | Analyst: yes; team: no |
 | `arbiter` | A different model family reviewing the other three and their reasoning | Indirect | Yes | No |
 
 `baseline` is the null hypothesis. Anything that cannot beat a logistic
@@ -109,8 +110,9 @@ extracted filing, issuer metadata, and market context truncated at that
 timestamp; once retrieval is built it will also carry comparable historical
 cases, restricted to those that had already resolved.
 
-Downstream of the packet, nothing will fetch. The agent analyst, once built, is
-constructed with an empty tool list, so it cannot look anything up. The
+Downstream of the packet, nothing fetches. The agent analyst holds no tool but
+the one that returns its structured answer, and every call's own startup event
+is checked for that, so it cannot look anything up. The
 prediction ledger requires the hash of the packet each forecast was made from,
 which will make any published result reproducible and any silent change to
 packet construction detectable. The baseline arm predates the packets: it reads
@@ -195,7 +197,7 @@ Docker Compose for local services; GitHub Actions for CI (Ruff, strict Pyright,
 pytest, and a full-history secret scan).
 
 Planned with the arms that need them: `pgvector` for comparable retrieval,
-LangGraph for the agent arm, PyTorch with `transformers` and `peft` for the
+LangGraph for the agent team, PyTorch with `transformers` and `peft` for the
 neural arm, and FastAPI for the dashboard.
 
 ## Documentation
@@ -208,6 +210,7 @@ neural arm, and FastAPI for the dashboard.
 | [`docs/code-standards.md`](docs/code-standards.md) | Engineering standards for this repository |
 | [`docs/data-provenance.md`](docs/data-provenance.md) | Sources, licensing terms, and what is redistributed |
 | [`docs/operations.md`](docs/operations.md) | Telemetry, spend ceilings, and running migrations |
+| [`docs/agent-arm.md`](docs/agent-arm.md) | The agent arm's design, failure rules, scoring, and the protocol for its scored run |
 | [`docs/strategies/`](docs/strategies/) | Per-strategy event definitions and features |
 | [`docs/lessons/`](docs/lessons/) | Concept notes covering the design decisions behind each subsystem |
 | [`reports/`](reports/) | Measurements, each committed with the code that produced it |
