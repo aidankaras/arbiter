@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import unicodedata
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -18,6 +20,7 @@ from datetime import date, time
 from decimal import Decimal
 from functools import cached_property
 from importlib import resources
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -59,13 +62,25 @@ def system_prompt() -> str:
     return resources.files("arbiter.arms.agent.prompts").joinpath(TEMPLATE_NAME).read_text()
 
 
+#: The code that decides what the model is shown and how it is called: this
+#: module renders the message, `runtime` builds the command line and checks the
+#: call. Hashed whole, so an edit to either is a new version, comments included.
+CODE_FILES: tuple[Path, ...] = (
+    Path(__file__),
+    Path(__file__).with_name("runtime.py"),
+)
+
+
 def prompt_version() -> str:
     """Identify everything that decides what the model is asked.
 
-    Any change to the template, the answer schema, the model, the effort or the
-    number of samples yields a new version, so predictions made under different
-    conditions can never be pooled by accident.
+    Any change to the template, the answer schema, the model, the effort, the
+    number of samples, or the code that renders the message and runs the call
+    yields a new version, so predictions made under different conditions can
+    never be pooled by accident. The Claude Code version is not included; it is
+    recorded in the pre-registration and checked by the live runtime test.
     """
+    code = hashlib.sha256(b"".join(path.read_bytes() for path in CODE_FILES)).hexdigest()
     identity = json.dumps(
         {
             "template": system_prompt(),
@@ -73,6 +88,7 @@ def prompt_version() -> str:
             "model": MODEL_ID,
             "effort": EFFORT,
             "samples": SAMPLES,
+            "code": code,
         },
         sort_keys=True,
     )
@@ -157,10 +173,21 @@ def _entry_key(packet: EvidencePacket) -> tuple[date, bool]:
     return local.date(), local.time() < _MARKET_OPEN
 
 
+#: Anything a reader could take for a fence delimiter: either tag, in any case,
+#: with any spacing or separator. Matched after NFKC folding, which maps
+#: full-width brackets and similar look-alikes onto their ASCII forms.
+_FENCE_TAG = re.compile(r"<\s*/?\s*untrusted[\W_]*data\s*>", re.IGNORECASE)
+
+
 def _text(value: object) -> str:
-    """Render filed text so it cannot close or reopen the data fence."""
-    rendered = "" if value is None else str(value)
-    return rendered.replace(_OPEN, "[removed]").replace(_CLOSE, "[removed]")
+    """Render one filed field so it stays one field inside the data fence.
+
+    Whitespace, line breaks included, collapses to single spaces so a field
+    cannot start a new filing row, and `|` becomes `/` so it cannot start a new
+    column; anything resembling a fence tag is removed.
+    """
+    rendered = "" if value is None else unicodedata.normalize("NFKC", str(value))
+    return _FENCE_TAG.sub("[removed]", " ".join(rendered.split())).replace("|", "/")
 
 
 def _number(value: Decimal | None) -> str:

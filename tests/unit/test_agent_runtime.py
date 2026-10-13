@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 
 from arbiter.arms.agent.runtime import (
+    ClaudeCodeRuntime,
     EnvironmentViolationError,
     Status,
     claude_command,
@@ -83,6 +84,17 @@ def test_the_bounds_of_a_probability_are_valid(p_up: float) -> None:
         ("tools", []),
         ("mcp_servers", [{"name": "packet", "status": "connected"}]),
         ("model", "claude-sonnet-5-5"),
+        # Each of these can put text in the context without adding a tool.
+        ("skills", ["market-insight"]),
+        ("slash_commands", ["review"]),
+        ("output_style", "custom"),
+        (
+            "plugins",
+            [{"name": "notes", "path": "/home/u/.claude/plugins/notes", "source": "notes@x"}],
+        ),
+        ("permissionMode", "bypassPermissions"),
+        # An API key bills per token; the study runs on the subscription only.
+        ("apiKeySource", "ANTHROPIC_API_KEY"),
     ],
 )
 def test_a_call_that_was_not_isolated_stops_the_run(field: str, value: object) -> None:
@@ -179,3 +191,90 @@ def test_the_command_grants_no_tools_and_never_uses_bare_mode() -> None:
     assert "--bare" not in argv  # bare mode ignores subscription sign-in
     assert argv[-2:] == ["--system-prompt", "SYSTEM"]
     assert argv[argv.index("--model") + 1] == "claude-sonnet-5"
+
+
+def test_a_memory_directory_with_content_stops_the_run(tmp_path: Path) -> None:
+    (tmp_path / "MEMORY.md").write_text("baseline IC was +0.029")
+
+    def change(event: dict[str, Any]) -> None:
+        event["memory_paths"] = {"auto": str(tmp_path)}
+
+    with pytest.raises(EnvironmentViolationError, match="memory"):
+        parse_stream(_edit("init", change), 0)
+
+
+def test_a_truncated_stream_is_an_error_not_a_crash() -> None:
+    # A process killed mid-write leaves half a line; one call must not abort a run.
+    truncated = OK[:-40]
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(truncated.splitlines()[-1])
+    assert parse_stream(truncated, -9).status is Status.ERROR
+
+
+def test_a_stray_line_on_stdout_does_not_void_a_good_call() -> None:
+    sample = parse_stream(OK + '\nnot json at all\n"a bare string"\n', 0)
+    assert sample.status is Status.OK
+    assert sample.payload is not None
+
+
+def test_a_result_without_a_startup_event_is_an_error_that_is_still_metered() -> None:
+    lines = [line for line in OK.splitlines() if json.loads(line).get("subtype") != "init"]
+    assert len(lines) == len(OK.splitlines()) - 1
+    sample = parse_stream("\n".join(lines), 0)
+    assert sample.status is Status.ERROR
+    assert sample.payload is not None and "modelUsage" in sample.payload
+
+
+def test_a_failed_exit_with_a_valid_answer_is_an_error() -> None:
+    sample = parse_stream(OK, 1)
+    assert sample.status is Status.ERROR
+    assert sample.payload is not None
+
+
+@pytest.mark.parametrize(
+    "info", [None, {"status": "allowed", "unifiedWindows": {"five_hour": {}}}]
+)
+def test_a_malformed_usage_window_does_not_void_a_good_call(info: object) -> None:
+    def change(event: dict[str, Any]) -> None:
+        event["rate_limit_info"] = info
+
+    sample = parse_stream(_edit("rate_limit_event", change), 0)
+    assert sample.status is Status.OK
+    assert sample.utilization == {}
+
+
+def _fake_claude(tmp_path: Path, body: str) -> str:
+    script = tmp_path / "claude"
+    script.write_text("#!/bin/sh\n" + body)
+    script.chmod(0o755)
+    return str(script)
+
+
+def test_a_call_that_times_out_keeps_what_it_printed(tmp_path: Path) -> None:
+    fixture = tmp_path / "stream.jsonl"
+    fixture.write_text(OK)
+    # Prints a complete, paid call and then hangs: its usage must still be metered.
+    executable = _fake_claude(tmp_path, f"cat {fixture}\nexec sleep 5\n")
+    sample = ClaudeCodeRuntime(executable, timeout_seconds=1).sample("system", "user")
+    assert sample.status is Status.ERROR
+    assert "timed out" in sample.detail
+    assert sample.payload is not None and "modelUsage" in sample.payload
+
+
+def test_the_call_does_not_inherit_the_callers_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in (
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_BASE_URL",
+        "CLAUDE_CONFIG_DIR",
+        "CLAUDE_CODE_SESSION_ID",
+    ):
+        monkeypatch.setenv(name, "set-by-the-caller")
+    fixture, seen = tmp_path / "stream.jsonl", tmp_path / "env.txt"
+    fixture.write_text(OK)
+    executable = _fake_claude(tmp_path, f"env > {seen}\ncat {fixture}\n")
+    ClaudeCodeRuntime(executable).sample("system", "user")
+    environment = seen.read_text()
+    assert "HOME=" in environment
+    assert "set-by-the-caller" not in environment
