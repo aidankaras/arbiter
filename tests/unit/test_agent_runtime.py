@@ -278,3 +278,22 @@ def test_the_call_does_not_inherit_the_callers_environment(
     environment = seen.read_text()
     assert "HOME=" in environment
     assert "set-by-the-caller" not in environment
+
+
+def test_a_rejected_window_without_an_answer_is_rate_limited_even_on_a_clean_exit() -> None:
+    # Classified as invalid, it would be retried and then excluded: an outage
+    # recorded as if the evidence had failed.
+    def reject(event: dict[str, Any]) -> None:
+        event["rate_limit_info"] = {"status": "rejected"}
+
+    def no_answer(event: dict[str, Any]) -> None:
+        event["structured_output"] = None
+        event["result"] = "usage limit reached"
+
+    lines = []
+    for line in _edit("rate_limit_event", reject).splitlines():
+        event = json.loads(line)
+        if event.get("type") == "result":
+            no_answer(event)
+        lines.append(json.dumps(event))
+    assert parse_stream("\n".join(lines), 0).status is Status.RATE_LIMITED

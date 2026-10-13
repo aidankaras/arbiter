@@ -117,9 +117,15 @@ uv run arbiter agent-pilot 2026-06-15        # one development day
 uv run arbiter agent-run --max-calls 600     # the scored window, resumable
 ```
 
-`agent-pilot` refuses any day in the scored window. `agent-run` resumes wherever
-the ledger left off, and stops cleanly at its call cap, at the spend or token
-ceilings, at the weekly usage ceiling, or when a usage window is exhausted.
+`agent-pilot` refuses any day in the scored window, and both commands refuse a
+trading day whose packets were never built, naming it. `agent-run` resumes
+wherever the ledger left off, and stops at its call cap, at the spend or token
+ceilings, at the weekly usage ceiling, or when a usage window is exhausted; a
+stopped run exits with code 3 and says why on stderr, so a loop that reruns it
+until nothing is left cannot mistake a stop for a finished window. A group whose
+filings changed after some were forecast or excluded (a re-ingest that adds a
+late filing) is counted as `changed` and left alone; the comparison drops it
+from both arms.
 Each forecast group gets three independent samples; one that is invalid or
 refused is retried once, and a group still short of three is recorded as
 excluded rather than averaged over fewer.

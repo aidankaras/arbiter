@@ -67,7 +67,13 @@ def ok(p_up: float, weekly: float = 0.30) -> Sample:
 
 
 def failed(status: Status, *, metered: bool = True) -> Sample:
-    return Sample(status, payload=RECORDED_RESULT if metered else None, detail=status.value)
+    # A completed call reports its usage windows whatever its answer was.
+    return Sample(
+        status,
+        payload=RECORDED_RESULT if metered else None,
+        utilization={"five_hour": 0.1, "seven_day": 0.30},
+        detail=status.value,
+    )
 
 
 class ScriptedRuntime:

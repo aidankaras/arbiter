@@ -46,7 +46,10 @@ Costs are what Claude Code reports for each call. On a subscription they are
 notional, so the binding limit is usually the subscription's own usage windows:
 every call reports how much of its five-hour and seven-day windows is used, and
 `--max-weekly-utilization` (default 0.80) stops a run once the seven-day window
-reaches it, leaving the rest of the week's allowance for other work.
+reaches it, leaving the rest of the week's allowance for other work. The check
+reads the last call's report before each group, so a fresh invocation can run
+one group (at most six calls) before it has seen the window, and a call that
+does not report the window stops the run rather than being read as unused.
 
 ## The local ledger
 

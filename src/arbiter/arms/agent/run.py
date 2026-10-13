@@ -59,10 +59,6 @@ DEFAULT_CALL_TOKENS = 15_000
 SCORED_FROM = date(2026, 7, 1)
 
 
-class PartialForecastError(RuntimeError):
-    """Raised when some, but not all, of a group's filings already hold a forecast."""
-
-
 @dataclass(frozen=True)
 class Limits:
     """When a run must stop before dispatching more work."""
@@ -82,6 +78,10 @@ class RunReport:
     forecasts: int = 0
     exclusions: int = 0
     skipped: int = 0
+    #: Groups whose filings changed after some of them were forecast or excluded,
+    #: as when a re-ingest adds a late filing. Neither forecast nor excluded
+    #: again, so the comparison drops them from both arms.
+    changed: int = 0
     calls: int = 0
     halted: str | None = None
     utilization_start: dict[str, float] = field(default_factory=dict[str, float])
@@ -126,7 +126,6 @@ def run_days(
     """Forecast every unforecast group on `days`, in day then CIK order.
 
     Raises:
-        PartialForecastError: a group is partly written.
         EnvironmentViolationError: a call ran without the required isolation.
     """
     report = RunReport()
@@ -158,18 +157,17 @@ def _forecast_group(
     system: str,
     now: Callable[[], datetime],
 ) -> None:
-    done = ledger.predicted(version, group.event_ids)
-    if done == set(group.event_ids):
+    events = set(group.event_ids)
+    decided = ledger.predicted(version, group.event_ids) | ledger.excluded_events(
+        version, group.event_ids
+    )
+    if decided == events or ledger.is_excluded(version, group.issuer_day_hash):
         report.skipped += 1
         return
-    if done:
-        msg = (
-            f"issuer {group.cik} on {group.day}: {len(done)} of {len(group.event_ids)} "
-            "filings already hold a forecast under this prompt version"
-        )
-        raise PartialForecastError(msg)
-    if ledger.is_excluded(version, group.issuer_day_hash):
-        report.skipped += 1
+    if decided:
+        # Drawing again would forecast a filing twice, or give a group that
+        # failed a second chance only because its evidence changed.
+        report.changed += 1
         return
 
     _check_limits(ledger, limits, report, meter, run_id=run_id, now=now)
@@ -236,15 +234,25 @@ def _draw(
     """Draw and meter one sample; stop the run on a failure unrelated to the evidence."""
     sample = runtime.sample(system, user)
     report.calls += 1
+    outage = sample.status in (Status.ERROR, Status.RATE_LIMITED)
+    unmetered = ""
     if sample.payload is not None:
-        ledger.record_call(sample.payload, run_id, group.issuer_day_hash)
-    meter.observe(sample)
-    if sample.utilization:
-        report.utilization_start = report.utilization_start or dict(sample.utilization)
-        report.utilization_end = dict(sample.utilization)
-    if sample.status in (Status.ERROR, Status.RATE_LIMITED):
+        try:
+            ledger.record_call(sample.payload, run_id, group.issuer_day_hash)
+            meter.observe(sample)
+        except ValueError as refused:
+            # A rejected request can report no usage at all. The halt it calls
+            # for still happens; only an answer that cannot be metered is fatal.
+            if not outage:
+                raise
+            unmetered = f"; its usage could not be metered ({refused})"
+    report.utilization_start = report.utilization_start or dict(sample.utilization)
+    # The latest call's report, even when empty: a stale reading must not pass
+    # for a current one.
+    report.utilization_end = dict(sample.utilization)
+    if outage:
         msg = f"{sample.status.value} on issuer {group.cik} ({group.day}): {sample.detail}"
-        raise _Halt(msg)
+        raise _Halt(msg + unmetered)
     return sample
 
 
@@ -268,6 +276,11 @@ def _check_limits(
         msg = f"call cap: {report.calls} made, a group may need {worst_case_calls} more"
         raise _Halt(msg)
     weekly = report.utilization_end.get("seven_day")
+    if report.calls and weekly is None:
+        # Read from each call; a call that did not report it leaves the
+        # ceiling unenforceable, and unreported is not unused.
+        msg = "weekly usage not reported by the last call; the ceiling cannot be checked"
+        raise _Halt(msg)
     if weekly is not None and weekly >= limits.max_weekly_utilization:
         msg = f"weekly usage at {weekly:.0%}, ceiling {limits.max_weekly_utilization:.0%}"
         raise _Halt(msg)

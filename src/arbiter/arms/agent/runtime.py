@@ -265,6 +265,9 @@ def parse_stream(stdout: str, returncode: int, stderr: str = "") -> Sample:
             payload=result,
             utilization=windows,
         )
+    if _rate_limited(events, result):
+        # No usable answer and an exhausted window: an outage, not the evidence.
+        return Sample(Status.RATE_LIMITED, payload=result, utilization=windows, detail=shown)
     return Sample(Status.INVALID, payload=result, utilization=windows, detail=shown)
 
 

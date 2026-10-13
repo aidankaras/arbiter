@@ -37,6 +37,15 @@ class FakeLedger:
     def is_excluded(self, prompt_version: str, issuer_day_hash: str) -> bool:
         return (prompt_version, issuer_day_hash) in self.exclusions
 
+    def excluded_events(self, prompt_version: str, event_ids: Sequence[str]) -> set[str]:
+        excluded = {
+            event_id
+            for (version, _), exclusion in self.exclusions.items()
+            if version == prompt_version
+            for event_id in exclusion.event_ids
+        }
+        return excluded & set(event_ids)
+
     def write_forecast(
         self, model_id: str, prompt_version: str, rows: Sequence[ForecastRow]
     ) -> None:

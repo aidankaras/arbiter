@@ -7,8 +7,15 @@ import pytest
 
 from arbiter.arms.agent.ledger import Exclusion
 from arbiter.arms.agent.prompt import group_issuer_days, prompt_version
-from arbiter.arms.agent.run import Limits, PartialForecastError, run_days, start_of_day
-from arbiter.arms.agent.runtime import Status
+from arbiter.arms.agent.run import (
+    DEFAULT_CALL_TOKENS,
+    DEFAULT_CALL_USD,
+    Limits,
+    run_days,
+    start_of_day,
+)
+from arbiter.arms.agent.runtime import Sample, Status
+from arbiter.llm.usage import parse_model_usage
 from arbiter.packets.schema import EvidencePacket
 from tests.agent_fakes import FakeLedger
 from tests.agent_samples import RECORDED_RESULT, ScriptedRuntime, failed, make_packet, ok
@@ -67,18 +74,25 @@ def test_a_second_run_skips_what_the_first_wrote() -> None:
     assert (report.skipped, report.calls) == (2, 0)
 
 
-def test_a_partly_written_group_stops_the_run() -> None:
+def test_a_group_that_gained_a_filing_after_its_forecast_is_set_aside() -> None:
+    # A re-ingest can add a late filing to a group already forecast. Forecasting
+    # it again would score its first filing twice; stopping would stall every
+    # later group. It is skipped and counted, and the comparison drops it.
+    first, late, other = PACKETS[0], PACKETS[1], PACKETS[2]
     ledger = FakeLedger()
-    group = group_issuer_days(DAY, PACKETS)[0]
-    from arbiter.arms.agent.ledger import ForecastRow
+    _run(ScriptedRuntime([ok(0.5)] * 6), ledger, packets=[first, other])
+    report = _run(ScriptedRuntime([]), ledger, packets=[first, late, other])
+    assert (report.changed, report.skipped, report.calls, report.halted) == (1, 1, 0, None)
+    assert ledger.predicted(prompt_version(), [late.event_id]) == set()
 
-    ledger.write_forecast(
-        "claude-sonnet-5",
-        prompt_version(),
-        [ForecastRow(group.event_ids[0], "h", group.issuer_day_hash, 0.5, (0.5,), ("r",))],
-    )
-    with pytest.raises(PartialForecastError):
-        _run(ScriptedRuntime([]), ledger)
+
+def test_a_group_that_gained_a_filing_after_its_exclusion_is_not_redrawn() -> None:
+    # Otherwise only failed groups would get a second draw when evidence changes.
+    first, late = PACKETS[0], PACKETS[1]
+    ledger = FakeLedger()
+    _run(ScriptedRuntime([failed(Status.INVALID)] * 2), ledger, packets=[first])
+    report = _run(ScriptedRuntime([]), ledger, packets=[first, late])
+    assert (report.changed, report.calls, report.forecasts) == (1, 0, 0)
 
 
 def test_an_invalid_sample_is_retried_once() -> None:
@@ -156,3 +170,73 @@ def test_the_weekly_usage_ceiling_stops_the_next_group() -> None:
     assert (report.forecasts, report.calls) == (1, 3)
     assert report.halted is not None and "weekly usage" in report.halted
     assert report.utilization_end["seven_day"] == 0.86
+
+
+ONE_ISSUER = [make_packet("0000000002-26-000001", cik=2)]
+
+
+def test_the_forecast_is_the_mean_not_the_middle_sample() -> None:
+    ledger = FakeLedger()
+    _run(ScriptedRuntime([ok(0.1), ok(0.2), ok(0.9)]), ledger, packets=ONE_ISSUER)
+    assert ledger.forecasts(prompt_version()) == {"0000000002-26-000001": pytest.approx(0.4)}
+
+
+@pytest.mark.parametrize("status", [Status.ERROR, Status.RATE_LIMITED])
+def test_the_call_that_halts_a_run_is_metered(status: Status) -> None:
+    ledger = FakeLedger()
+    report = _run(ScriptedRuntime([ok(0.4), failed(status)]), ledger)
+    assert report.halted is not None
+    assert len(ledger.calls) == 2
+
+
+def test_an_outage_that_reported_no_usage_still_halts_cleanly() -> None:
+    # A rejected request may report no per-model usage, which cannot be metered.
+    rejected = Sample(
+        Status.RATE_LIMITED, payload={**RECORDED_RESULT, "modelUsage": {}}, detail="limit"
+    )
+    ledger = FakeLedger()
+    report = _run(ScriptedRuntime([ok(0.4), rejected]), ledger)
+    assert report.halted is not None and "rate_limited" in report.halted
+    assert "not be metered" in report.halted
+    assert (ledger.forecasts_by_key, ledger.exclusions) == ({}, {})
+
+
+def test_the_weekly_ceiling_halts_when_usage_is_no_longer_reported() -> None:
+    # Unreported is not unused: a ceiling that cannot be checked stops the run.
+    silent = Sample(Status.OK, p_up=0.5, rationale="r", payload=RECORDED_RESULT, utilization={})
+    report = _run(ScriptedRuntime([ok(0.5)] * 2 + [silent] + [ok(0.5)] * 3), FakeLedger())
+    assert report.forecasts == 1
+    assert report.halted is not None and "not reported" in report.halted
+
+
+def test_the_call_cap_counts_the_calls_already_made() -> None:
+    limits = Limits(Decimal("100"), 10_000_000, max_calls=6, max_weekly_utilization=0.95)
+    report = _run(ScriptedRuntime([ok(0.5)] * 12), FakeLedger(), limits)
+    assert (report.forecasts, report.calls) == (1, 3)
+    assert report.halted is not None and "call cap" in report.halted
+
+
+def test_the_run_token_ceiling_refuses_a_group_it_cannot_cover() -> None:
+    one_call = sum(u.total_tokens for u in parse_model_usage(RECORDED_RESULT))
+    # Room for one group's worst case, and for the first group's three calls only.
+    limits = Limits(Decimal("100"), 6 * DEFAULT_CALL_TOKENS + one_call, 1_000, 0.95)
+    report = _run(ScriptedRuntime([ok(0.5)] * 12), FakeLedger(), limits)
+    assert (report.forecasts, report.calls) == (1, 3)
+    assert report.halted is not None
+
+
+def test_the_daily_ceiling_counts_todays_earlier_spend_and_a_whole_group() -> None:
+    ledger = FakeLedger()
+    ledger.now = NOW.replace(hour=13)  # 09:00 Eastern, the same day as NOW
+    for _ in range(30):
+        ledger.record_call(RECORDED_RESULT, "an-earlier-run", "h" * 64)
+    ledger.now = NOW
+    earlier = ledger.spent_since(start_of_day(NOW))
+    one_call = sum((u.cost_usd for u in parse_model_usage(RECORDED_RESULT)), Decimal(0))
+    margin = Decimal("0.005")
+    assert 3 * one_call > margin  # the first group's spend must not fit in the margin
+    ceiling = earlier + 6 * DEFAULT_CALL_USD + margin
+    limits = Limits(ceiling, 10_000_000, 1_000, 0.95)
+    report = _run(ScriptedRuntime([ok(0.5)] * 12), ledger, limits)
+    assert (report.forecasts, report.calls) == (1, 3)
+    assert report.halted is not None and "daily" in report.halted.lower()

@@ -106,3 +106,11 @@ def check_an_exclusion_is_written_once_per_version(ledger: Ledger, version: str)
     ledger.write_exclusion(Exclusion(day, 9, group, "other-" + version, "refused", 0, ("g-1",)))
     assert ledger.is_excluded(version, group)
     assert ledger.is_excluded("other-" + version, group)
+
+
+def check_excluded_events_are_found_by_filing(ledger: Ledger, version: str) -> None:
+    day = date(2026, 7, 6)
+    ledger.write_exclusion(Exclusion(day, 6, "6" * 64, version, "refused", 0, ("h-1", "h-2")))
+    assert ledger.excluded_events(version, ["h-1", "h-3"]) == {"h-1"}
+    assert ledger.excluded_events("other-" + version, ["h-1"]) == set()
+    assert ledger.excluded_events(version, []) == set()

@@ -354,12 +354,22 @@ def ledger_up(ledger_dir: str = "data/ledger") -> None:
 
 
 def _agent_days(packet_root: Path, start: date, end: date) -> list[date]:
-    """Days in [start, end] whose insider packets were built."""
-    return sorted(
-        day
-        for path in (packet_root / "insider").glob("*.jsonl.gz")
-        if start <= (day := date.fromisoformat(path.name.removesuffix(".jsonl.gz"))) <= end
-    )
+    """Every trading day in [start, end], or exit naming any whose packets were never built.
+
+    Taken from the market calendar rather than from the files present, so a day
+    whose build failed is reported rather than read as a holiday.
+    """
+    from arbiter.ingestion.backfill import sampled_trading_days
+
+    if end < start:
+        return []
+    days = sampled_trading_days(start, end)
+    missing = [d for d in days if not (packet_root / "insider" / f"{d}.jsonl.gz").exists()]
+    if missing:
+        named = ", ".join(str(d) for d in missing)
+        typer.echo(f"insider packets were never built for: {named}", err=True)
+        raise typer.Exit(code=2)
+    return days
 
 
 def _local_ledger(ledger_dir: Path) -> Settings:
@@ -416,11 +426,14 @@ def _run_agent(
     typer.echo(f"days: {days[0]} .. {days[-1]} ({len(days)})")
     typer.echo(
         f"forecasts: {report.forecasts}  exclusions: {report.exclusions}  "
-        f"skipped: {report.skipped}  calls: {report.calls}"
+        f"skipped: {report.skipped}  changed: {report.changed}  calls: {report.calls}"
     )
     typer.echo(f"usage windows: {report.utilization_start} -> {report.utilization_end}")
     if report.halted:
-        typer.echo(f"halted: {report.halted}")
+        # A distinct exit code, so a loop that reruns until nothing is left
+        # cannot mistake an outage or a ceiling for a finished window.
+        typer.echo(f"halted: {report.halted}", err=True)
+        raise typer.Exit(code=3)
 
 
 @app.command(name="agent-pilot")
@@ -455,7 +468,9 @@ def agent_pilot(
 
 @app.command(name="agent-run")
 def agent_run(
-    max_calls: int,
+    max_calls: int = typer.Option(
+        ..., help="Calls this invocation may make, retries included."
+    ),
     end: str = "2026-09-09",
     max_weekly_utilization: float = 0.80,
     packet_root: str = "data/packets",
