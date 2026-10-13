@@ -39,7 +39,20 @@ class ModelUsage:
     input_tokens: int
     output_tokens: int
     cache_read_tokens: int
+    #: Tokens written to the prompt cache, which is where a headless call
+    #: reports nearly all of its input.
+    cache_creation_tokens: int
     cost_usd: Decimal
+
+    @property
+    def total_tokens(self) -> int:
+        """Every token the model read or wrote, for a token ceiling to sum."""
+        return (
+            self.input_tokens
+            + self.output_tokens
+            + self.cache_read_tokens
+            + self.cache_creation_tokens
+        )
 
 
 def _require(payload: Mapping[str, Any], key: str) -> Any:
@@ -97,17 +110,26 @@ def parse_model_usage(payload: Mapping[str, Any]) -> list[ModelUsage]:
             input_tokens=int(entry["inputTokens"]),
             output_tokens=int(entry["outputTokens"]),
             cache_read_tokens=int(entry["cacheReadInputTokens"]),
+            cache_creation_tokens=int(entry["cacheCreationInputTokens"]),
             cost_usd=_money(entry["costUSD"]),
         )
         for model_id, entry in reported.items()
     ]
 
 
-def record_run(payload: Mapping[str, Any], run_id: str, agent_name: str | None = None) -> int:
+def record_run(
+    payload: Mapping[str, Any],
+    run_id: str,
+    agent_name: str | None = None,
+    *,
+    packet_hash: str | None = None,
+) -> int:
     """Persist one run's usage to the ledger, one row per model.
 
     `run_id` identifies the pipeline run that dispatched the work, so that a
-    night's total cost is a single query. Returns the number of rows written.
+    night's total cost is a single query. `packet_hash` names the evidence the
+    call read, so cost per decision is a join rather than an estimate. Returns
+    the number of rows written.
 
     Raises:
         ValueError: the payload is missing a required field.
@@ -125,8 +147,10 @@ def record_run(payload: Mapping[str, Any], run_id: str, agent_name: str | None =
                     input_tokens=record.input_tokens,
                     output_tokens=record.output_tokens,
                     cache_read_tokens=record.cache_read_tokens,
+                    cache_creation_tokens=record.cache_creation_tokens,
                     cost_usd=record.cost_usd,
                     agent_name=agent_name,
+                    packet_hash=packet_hash,
                 )
             )
 

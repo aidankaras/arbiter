@@ -97,3 +97,29 @@ def test_missing_model_usage_block_raises():
     del payload["modelUsage"]
     with pytest.raises(ValueError, match="modelUsage"):
         parse_model_usage(payload)
+
+
+def test_cache_writes_are_parsed_per_model() -> None:
+    """Most of a headless call's input arrives as cache writes; dropping them
+    would meter a fraction of a percent of what the call read."""
+    payload = json.loads(FIXTURE.read_text())
+    records = {record.model_id: record for record in parse_model_usage(payload)}
+    for model_id, reported in payload["modelUsage"].items():
+        assert records[model_id].cache_creation_tokens == reported["cacheCreationInputTokens"]
+    # The premise: the fixture holds a model whose cache writes dominate its input.
+    assert any(
+        reported["cacheCreationInputTokens"] > 100 * reported["inputTokens"]
+        for reported in payload["modelUsage"].values()
+    )
+
+
+def test_total_tokens_counts_every_kind_of_token() -> None:
+    payload = json.loads(FIXTURE.read_text())
+    for record in parse_model_usage(payload):
+        reported = payload["modelUsage"][record.model_id]
+        assert record.total_tokens == (
+            reported["inputTokens"]
+            + reported["outputTokens"]
+            + reported["cacheReadInputTokens"]
+            + reported["cacheCreationInputTokens"]
+        )
