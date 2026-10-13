@@ -101,17 +101,23 @@ def parse_model_usage(payload: Mapping[str, Any]) -> list[ModelUsage]:
     of model without editing call sites.
 
     Raises:
-        ValueError: the per-model usage block is absent.
+        ValueError: the per-model usage block is absent or empty, or an entry
+            lacks a token count or its cost.
     """
     reported: Mapping[str, Mapping[str, Any]] = _require(payload, "modelUsage")
+    if not reported:
+        # A call that ran reports at least the model it ran on; an empty block
+        # would otherwise meter the call as costing nothing.
+        msg = "Claude run payload reports no 'modelUsage' entries"
+        raise ValueError(msg)
     return [
         ModelUsage(
             model_id=model_id,
-            input_tokens=int(entry["inputTokens"]),
-            output_tokens=int(entry["outputTokens"]),
-            cache_read_tokens=int(entry["cacheReadInputTokens"]),
-            cache_creation_tokens=int(entry["cacheCreationInputTokens"]),
-            cost_usd=_money(entry["costUSD"]),
+            input_tokens=int(_require(entry, "inputTokens")),
+            output_tokens=int(_require(entry, "outputTokens")),
+            cache_read_tokens=int(_require(entry, "cacheReadInputTokens")),
+            cache_creation_tokens=int(_require(entry, "cacheCreationInputTokens")),
+            cost_usd=_money(_require(entry, "costUSD")),
         )
         for model_id, entry in reported.items()
     ]

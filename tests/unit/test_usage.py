@@ -123,3 +123,28 @@ def test_total_tokens_counts_every_kind_of_token() -> None:
             + reported["cacheReadInputTokens"]
             + reported["cacheCreationInputTokens"]
         )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "inputTokens",
+        "outputTokens",
+        "cacheReadInputTokens",
+        "cacheCreationInputTokens",
+        "costUSD",
+    ],
+)
+def test_a_missing_per_model_field_raises_naming_it(field: str):
+    payload = _payload()
+    del next(iter(payload["modelUsage"].values()))[field]
+    with pytest.raises(ValueError, match=field):
+        parse_model_usage(payload)
+
+
+def test_a_run_reporting_no_per_model_usage_raises():
+    # A call that ran but reported no usage would otherwise be metered as nothing.
+    payload = _payload()
+    payload["modelUsage"] = {}
+    with pytest.raises(ValueError, match="modelUsage"):
+        parse_model_usage(payload)

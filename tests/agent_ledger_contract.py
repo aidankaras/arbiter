@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -64,6 +64,8 @@ def check_usage_sums_every_token_and_cost(ledger: Ledger, run_id: str) -> None:
     before = ledger.spent_since(datetime(2000, 1, 1).astimezone())
     ledger.record_call(data, run_id, "c" * 64)
     ledger.record_call(data, run_id, "c" * 64)
+    # Another run's call must not count toward this run's token ceiling.
+    ledger.record_call(data, run_id + "-other", "c" * 64)
     expected_tokens = 2 * sum(
         usage["inputTokens"]
         + usage["outputTokens"]
@@ -73,10 +75,15 @@ def check_usage_sums_every_token_and_cost(ledger: Ledger, run_id: str) -> None:
     )
     assert ledger.tokens_for_run(run_id) == expected_tokens
     spent = ledger.spent_since(datetime(2000, 1, 1).astimezone()) - before
-    expected_cost = 2 * sum(
+    # Nothing was spent after an instant that has not happened yet.
+    assert ledger.spent_since(datetime.now(UTC) + timedelta(days=1)) == 0
+    expected_cost = 3 * sum(
         Decimal(str(usage["costUSD"])) for usage in data["modelUsage"].values()
     )
-    assert abs(spent - expected_cost) < Decimal("0.000001")
+    # Postgres stores each row's cost to six decimals, so each row may be off by
+    # half a millionth; the in-memory ledger keeps full precision.
+    rows = 3 * len(data["modelUsage"])
+    assert abs(spent - expected_cost) <= rows * Decimal("0.0000005")
 
 
 def check_forecasts_and_exclusions_read_back_by_version(ledger: Ledger, version: str) -> None:
@@ -87,3 +94,15 @@ def check_forecasts_and_exclusions_read_back_by_version(ledger: Ledger, version:
     ledger.write_exclusion(Exclusion(day, 8, "8" * 64, version, "refused", 1, ("f-5",)))
     assert ledger.forecasts(version) == {"f-1": 0.25, "f-2": 0.75}
     assert ledger.exclusion_counts(version) == {"refused": 2}
+
+
+def check_an_exclusion_is_written_once_per_version(ledger: Ledger, version: str) -> None:
+    day, group = date(2026, 7, 3), "9" * 64
+    ledger.write_exclusion(Exclusion(day, 9, group, version, "refused", 0, ("g-1",)))
+    with pytest.raises(Exception):  # noqa: B017 - each ledger raises its own type
+        ledger.write_exclusion(Exclusion(day, 9, group, version, "invalid_output", 1, ("g-1",)))
+    assert ledger.exclusion_counts(version) == {"refused": 1}
+    # A new prompt version is a new arm configuration: it may exclude the same group.
+    ledger.write_exclusion(Exclusion(day, 9, group, "other-" + version, "refused", 0, ("g-1",)))
+    assert ledger.is_excluded(version, group)
+    assert ledger.is_excluded("other-" + version, group)
